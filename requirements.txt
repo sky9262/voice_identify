@@ -1,0 +1,10 @@
+flask>=2.0
+torch
+torchaudio
+transformers
+librosa
+soundfile
+numpy
+requests
+werkzeug
+pydub

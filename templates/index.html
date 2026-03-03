@@ -1,0 +1,1614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speaker Identification System</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #e0e0e0;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        
+        header {
+            text-align: center;
+            padding: 30px 0;
+        }
+        
+        h1 {
+            color: #00d4ff;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            color: #888;
+            font-size: 1.1em;
+        }
+        
+        .status-bar {
+            background: rgba(255,255,255,0.05);
+            border-radius: 10px;
+            padding: 15px 20px;
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #ff4444;
+        }
+        
+        .status-dot.active {
+            background: #00ff88;
+            box-shadow: 0 0 10px #00ff88;
+        }
+        
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 25px;
+            background: rgba(255,255,255,0.05);
+            padding: 5px;
+            border-radius: 12px;
+        }
+        
+        .tab-btn {
+            flex: 1;
+            padding: 15px 25px;
+            border: none;
+            background: transparent;
+            color: #888;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+        
+        .tab-btn:hover {
+            color: #fff;
+            background: rgba(255,255,255,0.05);
+        }
+        
+        .tab-btn.active {
+            background: linear-gradient(135deg, #00d4ff, #0099cc);
+            color: #000;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #00d4ff, #0099cc);
+            color: #000;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0,212,255,0.4);
+        }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, #ff4444, #cc0000);
+            color: #fff;
+        }
+        
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(255,68,68,0.4);
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, #00ff88, #00cc6a);
+            color: #000;
+        }
+        
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0,255,136,0.4);
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+        
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+            margin-bottom: 30px;
+        }
+        
+        .card {
+            background: rgba(255,255,255,0.05);
+            border-radius: 15px;
+            padding: 25px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .card h2 {
+            color: #00d4ff;
+            margin-bottom: 20px;
+            font-size: 1.4em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .card h2 .icon {
+            font-size: 1.2em;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #aaa;
+            font-size: 0.9em;
+        }
+        
+        .form-group input[type="text"],
+        .form-group input[type="number"] {
+            width: 100%;
+            padding: 12px 15px;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            background: rgba(0,0,0,0.3);
+            color: #fff;
+            font-size: 1em;
+        }
+        
+        .form-group input:focus {
+            outline: none;
+            border-color: #00d4ff;
+        }
+        
+        .file-input-wrapper {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+            width: 100%;
+        }
+        
+        .file-input-wrapper input[type="file"] {
+            position: absolute;
+            left: 0;
+            top: 0;
+            opacity: 0;
+            cursor: pointer;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .file-input-label {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 20px;
+            border: 2px dashed rgba(255,255,255,0.2);
+            border-radius: 10px;
+            background: rgba(0,0,0,0.2);
+            color: #888;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .file-input-label:hover {
+            border-color: #00d4ff;
+            color: #00d4ff;
+        }
+        
+        .file-input-label.has-file {
+            border-color: #00ff88;
+            color: #00ff88;
+        }
+        
+        .result-box {
+            background: rgba(0,0,0,0.3);
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+            display: none;
+        }
+        
+        .result-box.show {
+            display: block;
+        }
+        
+        .result-box.success {
+            border-left: 4px solid #00ff88;
+        }
+        
+        .result-box.error {
+            border-left: 4px solid #ff4444;
+        }
+        
+        .result-title {
+            font-size: 1.2em;
+            margin-bottom: 10px;
+        }
+        
+        .result-speaker {
+            font-size: 2em;
+            color: #00d4ff;
+            font-weight: bold;
+            margin: 15px 0;
+        }
+        
+        .result-score {
+            color: #888;
+        }
+        
+        .score-bar {
+            height: 8px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+        
+        .score-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ff4444, #ffaa00, #00ff88);
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+        
+        .speakers-list {
+            background: rgba(255,255,255,0.05);
+            border-radius: 15px;
+            padding: 25px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .speakers-list h2 {
+            color: #00d4ff;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .speaker-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        
+        .speaker-tag {
+            background: rgba(0,212,255,0.1);
+            border: 1px solid rgba(0,212,255,0.3);
+            padding: 8px 15px;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .speaker-tag .delete-btn {
+            background: none;
+            border: none;
+            color: #ff4444;
+            cursor: pointer;
+            font-size: 1.2em;
+            padding: 0;
+            line-height: 1;
+        }
+        
+        .speaker-tag .delete-btn:hover {
+            color: #ff6666;
+        }
+        
+        .empty-state {
+            color: #666;
+            font-style: italic;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .loading {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            color: #00d4ff;
+        }
+        
+        .loading.show {
+            display: flex;
+        }
+        
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(0,212,255,0.3);
+            border-top-color: #00d4ff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .scores-breakdown {
+            margin-top: 15px;
+        }
+        
+        .scores-breakdown h4 {
+            color: #888;
+            font-size: 0.9em;
+            margin-bottom: 10px;
+        }
+        
+        .score-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+        
+        .score-item .name {
+            width: 120px;
+            color: #aaa;
+        }
+        
+        .score-item .bar-container {
+            flex: 1;
+            height: 6px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        
+        .score-item .bar {
+            height: 100%;
+            background: #00d4ff;
+            border-radius: 3px;
+        }
+        
+        .score-item .value {
+            width: 50px;
+            text-align: right;
+            color: #888;
+            font-size: 0.9em;
+        }
+        
+        /* Live Tab Styles */
+        .live-container {
+            text-align: center;
+        }
+        
+        .live-display {
+            background: rgba(0,0,0,0.4);
+            border-radius: 20px;
+            padding: 40px;
+            margin-bottom: 30px;
+            border: 2px solid rgba(255,255,255,0.1);
+        }
+        
+        .live-speaker {
+            font-size: 4em;
+            font-weight: bold;
+            color: #00d4ff;
+            margin-bottom: 20px;
+            text-shadow: 0 0 30px rgba(0,212,255,0.5);
+            transition: all 0.3s ease;
+        }
+        
+        .live-speaker.unknown {
+            color: #666;
+            text-shadow: none;
+        }
+        
+        .live-similarity {
+            font-size: 1.5em;
+            color: #888;
+            margin-bottom: 20px;
+        }
+        
+        .live-status {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            font-size: 1.1em;
+            color: #888;
+        }
+        
+        .live-status.recording {
+            color: #ff4444;
+        }
+        
+        .pulse-dot {
+            width: 12px;
+            height: 12px;
+            background: #ff4444;
+            border-radius: 50%;
+            animation: pulse 1s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.3); opacity: 0.7; }
+        }
+        
+        .live-controls {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .live-controls .btn {
+            padding: 15px 40px;
+            font-size: 1.2em;
+        }
+        
+        .live-settings {
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .live-settings .form-group {
+            max-width: 300px;
+            margin: 0 auto;
+        }
+        
+        .live-scores {
+            margin-top: 30px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        
+        .live-score-card {
+            background: rgba(255,255,255,0.05);
+            border-radius: 10px;
+            padding: 15px;
+            text-align: left;
+        }
+        
+        .live-score-card .speaker-name {
+            color: #aaa;
+            font-size: 0.9em;
+            margin-bottom: 5px;
+        }
+        
+        .live-score-card .speaker-score {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #00d4ff;
+        }
+        
+        .live-score-card.best {
+            border: 2px solid #00ff88;
+        }
+        
+        .live-score-card.best .speaker-score {
+            color: #00ff88;
+        }
+        
+        .visualizer-container {
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 3px;
+            margin-bottom: 20px;
+        }
+        
+        .visualizer-bar {
+            width: 4px;
+            background: #00d4ff;
+            border-radius: 2px;
+            transition: height 0.05s ease;
+        }
+        
+        /* Settings Speaker Item */
+        .speaker-item {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 15px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 10px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .speaker-item .speaker-name {
+            flex: 1;
+            font-size: 1.2em;
+            color: #00d4ff;
+            min-width: 150px;
+        }
+        
+        .speaker-item .speaker-actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .speaker-item .btn-small {
+            padding: 8px 15px;
+            font-size: 0.9em;
+        }
+        
+        .speaker-item input[type="text"] {
+            padding: 8px 12px;
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 6px;
+            background: rgba(0,0,0,0.4);
+            color: #fff;
+            font-size: 1em;
+            width: 200px;
+        }
+        
+        .speaker-item.editing .speaker-name {
+            display: none;
+        }
+        
+        .speaker-item .edit-input {
+            display: none;
+        }
+        
+        .speaker-item.editing .edit-input {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        footer {
+            text-align: center;
+            padding: 30px;
+            color: #444;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Speaker Identification</h1>
+            <p class="subtitle">Powered by Microsoft WavLM</p>
+        </header>
+        
+        <div class="status-bar">
+            <div class="status-item">
+                <div class="status-dot" id="modelStatus"></div>
+                <span id="modelStatusText">Model not loaded</span>
+            </div>
+            <div class="status-item">
+                <span>Device: <strong id="deviceInfo">-</strong></span>
+            </div>
+            <div class="status-item">
+                <span>Speakers: <strong id="speakerCount">0</strong></span>
+            </div>
+            <button class="btn btn-primary" id="initBtn" onclick="initModel()">
+                Initialize Model
+            </button>
+        </div>
+        
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('manage')">Manage</button>
+            <button class="tab-btn" onclick="switchTab('live')">Live</button>
+            <button class="tab-btn" onclick="switchTab('settings')">Settings</button>
+        </div>
+        
+        <!-- Manage Tab -->
+        <div class="tab-content active" id="tab-manage">
+        <div class="cards">
+            <div class="card">
+                <h2><span class="icon">+</span> Enroll Speaker</h2>
+                <form id="enrollForm" onsubmit="enrollSpeaker(event)">
+                    <div class="form-group">
+                        <label>Speaker Name</label>
+                        <input type="text" id="enrollName" placeholder="Enter speaker name" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Voice Sample</label>
+                        <div class="file-input-wrapper">
+                            <div class="file-input-label" id="enrollFileLabel">
+                                <span>Click or drag audio file here</span>
+                            </div>
+                            <input type="file" id="enrollFile" accept="audio/*" required 
+                                   onchange="updateFileLabel(this, 'enrollFileLabel')">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary" id="enrollBtn">Enroll Speaker</button>
+                    <div class="loading" id="enrollLoading">
+                        <div class="spinner"></div>
+                        <span>Processing...</span>
+                    </div>
+                </form>
+                <div class="result-box" id="enrollResult"></div>
+            </div>
+            
+            <div class="card">
+                <h2><span class="icon">?</span> Identify Speaker</h2>
+                <form id="identifyForm" onsubmit="identifySpeaker(event)">
+                    <div class="form-group">
+                        <label>Audio File</label>
+                        <div class="file-input-wrapper">
+                            <div class="file-input-label" id="identifyFileLabel">
+                                <span>Click or drag audio file here</span>
+                            </div>
+                            <input type="file" id="identifyFile" accept="audio/*" required
+                                   onchange="updateFileLabel(this, 'identifyFileLabel')">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Similarity Threshold (0-1)</label>
+                        <input type="number" id="threshold" value="0.5" min="0" max="1" step="0.05">
+                    </div>
+                    <button type="submit" class="btn btn-primary" id="identifyBtn">Identify Speaker</button>
+                    <div class="loading" id="identifyLoading">
+                        <div class="spinner"></div>
+                        <span>Analyzing...</span>
+                    </div>
+                </form>
+                <div class="result-box" id="identifyResult"></div>
+            </div>
+        </div>
+        
+        <div class="speakers-list">
+            <h2><span class="icon">👥</span> Enrolled Speakers</h2>
+            <div class="speaker-tags" id="speakerTags">
+                <div class="empty-state">No speakers enrolled yet</div>
+            </div>
+            <div style="margin-top: 20px;">
+                <button class="btn btn-danger" onclick="clearAllSpeakers()">Clear All Speakers</button>
+            </div>
+        </div>
+        </div>
+        
+        <!-- Live Tab -->
+        <div class="tab-content" id="tab-live">
+            <div class="live-container">
+                <!-- Live Enrollment Section -->
+                <div class="card" style="margin-bottom: 30px; text-align: left;">
+                    <h2><span class="icon">+</span> Register Voice (Live)</h2>
+                    
+                    <!-- Mode Toggle -->
+                    <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                        <button class="btn" id="manualModeBtn" onclick="setEnrollMode('manual')" style="background: linear-gradient(135deg, #00d4ff, #0099cc); color: #000;">Manual</button>
+                        <button class="btn" id="autoModeBtn" onclick="setEnrollMode('auto')" style="background: #333; color: #888;">Automatic (Voice)</button>
+                    </div>
+                    
+                    <!-- Manual Mode -->
+                    <div id="manualEnrollSection">
+                        <div class="form-group">
+                            <label>Speaker Name</label>
+                            <input type="text" id="liveEnrollName" placeholder="Enter speaker name">
+                        </div>
+                        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                            <button class="btn btn-success" id="startRecordBtn" onclick="startEnrollRecording()">Record Voice</button>
+                            <button class="btn btn-danger" id="stopRecordBtn" onclick="stopEnrollRecording()" disabled>Stop & Save</button>
+                            <span id="recordingTimer" style="color: #888; margin-left: 10px;"></span>
+                        </div>
+                    </div>
+                    
+                    <!-- Automatic Mode -->
+                    <div id="autoEnrollSection" style="display: none;">
+                        <div style="background: rgba(0,212,255,0.1); border-radius: 10px; padding: 15px; margin-bottom: 20px;">
+                            <p style="color: #00d4ff; margin: 0;">Say something like: <strong>"My name is [Your Name]"</strong></p>
+                            <p style="color: #888; margin: 5px 0 0 0; font-size: 0.9em;">Supported phrases: "My name is...", "I am...", "Call me...", "This is..."</p>
+                        </div>
+                        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 15px;">
+                            <button class="btn btn-success" id="startAutoRecordBtn" onclick="startAutoEnroll()">Start Recording</button>
+                            <button class="btn btn-danger" id="stopAutoRecordBtn" onclick="stopAutoEnroll()" disabled>Stop & Process</button>
+                            <span id="autoRecordingTimer" style="color: #888; margin-left: 10px;"></span>
+                        </div>
+                        <div id="transcriptDisplay" style="background: rgba(0,0,0,0.3); border-radius: 8px; padding: 15px; display: none;">
+                            <p style="color: #888; margin: 0 0 5px 0; font-size: 0.85em;">Detected speech:</p>
+                            <p id="transcriptText" style="color: #fff; margin: 0; font-size: 1.1em;"></p>
+                        </div>
+                    </div>
+                    
+                    <div class="result-box" id="enrollLiveResult" style="margin-top: 15px;"></div>
+                </div>
+                
+                <!-- Live Identification Section -->
+                <div class="live-display">
+                    <div class="visualizer-container" id="visualizer"></div>
+                    <div class="live-speaker" id="liveSpeaker">-</div>
+                    <div class="live-similarity" id="liveSimilarity">Similarity: -</div>
+                    <div class="live-status" id="liveStatus">
+                        <span>Ready to start</span>
+                    </div>
+                </div>
+                
+                <div class="live-controls">
+                    <button class="btn btn-success" id="startLiveBtn" onclick="startLive()">Start Live</button>
+                    <button class="btn btn-danger" id="stopLiveBtn" onclick="stopLive()" disabled>Stop</button>
+                </div>
+                
+                <div class="live-settings">
+                    <div class="form-group">
+                        <label>Similarity Threshold (0-1)</label>
+                        <input type="number" id="liveThreshold" value="0.5" min="0" max="1" step="0.05">
+                    </div>
+                </div>
+                
+                <div class="live-scores" id="liveScores"></div>
+            </div>
+        </div>
+        
+        <!-- Settings Tab -->
+        <div class="tab-content" id="tab-settings">
+            <div class="card">
+                <h2><span class="icon">&#9881;</span> Enrolled Speakers Management</h2>
+                <p style="color: #888; margin-bottom: 20px;">View, rename, or delete enrolled speakers.</p>
+                
+                <div id="settingsSpeakerList">
+                    <div class="empty-state">No speakers enrolled yet</div>
+                </div>
+                
+                <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
+                    <button class="btn btn-danger" onclick="clearAllSpeakers()">Delete All Speakers</button>
+                </div>
+            </div>
+        </div>
+        
+        <footer>
+            <p>Speaker Identification System using WavLM</p>
+        </footer>
+    </div>
+    
+    <script>
+        // =============================================
+        // Tab Management
+        // =============================================
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(`tab-${tabName}`).classList.add('active');
+            event.target.classList.add('active');
+            if (tabName !== 'live' && isLiveRunning) {
+                stopLive();
+            }
+        }
+        
+        // =============================================
+        // Enrollment Mode Toggle
+        // =============================================
+        let enrollMode = 'manual';
+        
+        function setEnrollMode(mode) {
+            enrollMode = mode;
+            const manualBtn = document.getElementById('manualModeBtn');
+            const autoBtn = document.getElementById('autoModeBtn');
+            const manualSection = document.getElementById('manualEnrollSection');
+            const autoSection = document.getElementById('autoEnrollSection');
+            
+            if (mode === 'manual') {
+                manualBtn.style.background = 'linear-gradient(135deg, #00d4ff, #0099cc)';
+                manualBtn.style.color = '#000';
+                autoBtn.style.background = '#333';
+                autoBtn.style.color = '#888';
+                manualSection.style.display = 'block';
+                autoSection.style.display = 'none';
+            } else {
+                autoBtn.style.background = 'linear-gradient(135deg, #00d4ff, #0099cc)';
+                autoBtn.style.color = '#000';
+                manualBtn.style.background = '#333';
+                manualBtn.style.color = '#888';
+                manualSection.style.display = 'none';
+                autoSection.style.display = 'block';
+            }
+            
+            // Clear results
+            document.getElementById('enrollLiveResult').classList.remove('show');
+        }
+        
+        // =============================================
+        // Automatic Enrollment with Speech Recognition
+        // =============================================
+        let autoRecorder = null;
+        let autoStream = null;
+        let autoChunks = [];
+        let autoTimerInterval = null;
+        let autoSeconds = 0;
+        let speechRecognition = null;
+        let finalTranscript = '';
+        
+        function initSpeechRecognition() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                console.warn('Speech Recognition not supported in this browser');
+                return null;
+            }
+            
+            const recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'en-US';
+            
+            recognition.onresult = (event) => {
+                let interim = '';
+                finalTranscript = '';
+                
+                for (let i = 0; i < event.results.length; i++) {
+                    if (event.results[i].isFinal) {
+                        finalTranscript += event.results[i][0].transcript;
+                    } else {
+                        interim += event.results[i][0].transcript;
+                    }
+                }
+                
+                const display = document.getElementById('transcriptDisplay');
+                const textEl = document.getElementById('transcriptText');
+                display.style.display = 'block';
+                textEl.textContent = finalTranscript || interim || '(listening...)';
+            };
+            
+            recognition.onerror = (event) => {
+                console.error('Speech recognition error:', event.error);
+            };
+            
+            return recognition;
+        }
+        
+        async function startAutoEnroll() {
+            try {
+                // Start audio recording
+                autoStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                autoRecorder = new MediaRecorder(autoStream, { mimeType: 'audio/webm;codecs=opus' });
+                autoChunks = [];
+                finalTranscript = '';
+                
+                autoRecorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) autoChunks.push(e.data);
+                };
+                
+                autoRecorder.start();
+                
+                // Start speech recognition
+                speechRecognition = initSpeechRecognition();
+                if (speechRecognition) {
+                    speechRecognition.start();
+                }
+                
+                // Timer
+                autoSeconds = 0;
+                document.getElementById('autoRecordingTimer').textContent = '0s';
+                autoTimerInterval = setInterval(() => {
+                    autoSeconds++;
+                    document.getElementById('autoRecordingTimer').textContent = `${autoSeconds}s`;
+                }, 1000);
+                
+                // Update UI
+                document.getElementById('startAutoRecordBtn').disabled = true;
+                document.getElementById('stopAutoRecordBtn').disabled = false;
+                document.getElementById('transcriptDisplay').style.display = 'block';
+                document.getElementById('transcriptText').textContent = '(listening...)';
+                document.getElementById('enrollLiveResult').classList.remove('show');
+                
+            } catch (error) {
+                alert('Could not access microphone: ' + error.message);
+            }
+        }
+        
+        async function stopAutoEnroll() {
+            // Stop timer
+            if (autoTimerInterval) {
+                clearInterval(autoTimerInterval);
+                autoTimerInterval = null;
+            }
+            
+            // Stop speech recognition
+            if (speechRecognition) {
+                speechRecognition.stop();
+            }
+            
+            // Stop recording and process
+            if (autoRecorder && autoRecorder.state === 'recording') {
+                autoRecorder.onstop = async () => {
+                    if (autoChunks.length > 0) {
+                        const blob = new Blob(autoChunks, { type: 'audio/webm' });
+                        await processAutoEnroll(blob, finalTranscript);
+                    }
+                };
+                autoRecorder.stop();
+            }
+            
+            // Stop stream
+            if (autoStream) {
+                autoStream.getTracks().forEach(track => track.stop());
+            }
+            
+            // Update UI
+            document.getElementById('startAutoRecordBtn').disabled = false;
+            document.getElementById('stopAutoRecordBtn').disabled = true;
+            document.getElementById('autoRecordingTimer').textContent = '';
+        }
+        
+        async function processAutoEnroll(audioBlob, transcript) {
+            const resultBox = document.getElementById('enrollLiveResult');
+            
+            if (!transcript || transcript.trim() === '') {
+                resultBox.className = 'result-box show error';
+                resultBox.innerHTML = `<div class="result-title">&#10007; No Speech Detected</div><p>Please try again and speak clearly.</p>`;
+                return;
+            }
+            
+            resultBox.className = 'result-box show';
+            resultBox.innerHTML = '<div class="loading show"><div class="spinner"></div><span>Processing...</span></div>';
+            
+            const formData = new FormData();
+            formData.append('audio', audioBlob, 'auto-enroll.webm');
+            formData.append('transcript', transcript);
+            
+            try {
+                const res = await fetch('/api/auto-enroll', { method: 'POST', body: formData });
+                const data = await res.json();
+                
+                if (data.success) {
+                    resultBox.className = 'result-box show success';
+                    resultBox.innerHTML = `
+                        <div class="result-title">&#10003; Success</div>
+                        <p>${data.message}</p>
+                        <p style="color: #888; font-size: 0.9em;">Detected: "${data.transcript}" (${data.duration}s recorded)</p>
+                    `;
+                    document.getElementById('transcriptDisplay').style.display = 'none';
+                    checkStatus();
+                } else {
+                    resultBox.className = 'result-box show error';
+                    resultBox.innerHTML = `
+                        <div class="result-title">&#10007; Error</div>
+                        <p>${data.error}</p>
+                        ${data.transcript ? `<p style="color: #888; font-size: 0.9em;">Heard: "${data.transcript}"</p>` : ''}
+                    `;
+                }
+            } catch (error) {
+                resultBox.className = 'result-box show error';
+                resultBox.innerHTML = `<div class="result-title">&#10007; Error</div><p>${error.message}</p>`;
+            }
+        }
+        
+        // =============================================
+        // Live Enrollment
+        // =============================================
+        let enrollRecorder = null;
+        let enrollStream = null;
+        let enrollChunks = [];
+        let enrollTimerInterval = null;
+        let enrollSeconds = 0;
+        
+        async function startEnrollRecording() {
+            const name = document.getElementById('liveEnrollName').value.trim();
+            if (!name) {
+                alert('Please enter a speaker name first');
+                return;
+            }
+            
+            try {
+                enrollStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                enrollRecorder = new MediaRecorder(enrollStream, { mimeType: 'audio/webm;codecs=opus' });
+                enrollChunks = [];
+                
+                enrollRecorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) enrollChunks.push(e.data);
+                };
+                
+                enrollRecorder.onstop = async () => {
+                    if (enrollChunks.length > 0) {
+                        const blob = new Blob(enrollChunks, { type: 'audio/webm' });
+                        await enrollFromLive(blob);
+                    }
+                };
+                
+                enrollRecorder.start();
+                enrollSeconds = 0;
+                document.getElementById('recordingTimer').textContent = '0s';
+                enrollTimerInterval = setInterval(() => {
+                    enrollSeconds++;
+                    document.getElementById('recordingTimer').textContent = `${enrollSeconds}s (min 2s)`;
+                }, 1000);
+                
+                document.getElementById('startRecordBtn').disabled = true;
+                document.getElementById('stopRecordBtn').disabled = false;
+                document.getElementById('liveEnrollName').disabled = true;
+            } catch (error) {
+                alert('Could not access microphone: ' + error.message);
+            }
+        }
+        
+        function stopEnrollRecording() {
+            if (enrollTimerInterval) {
+                clearInterval(enrollTimerInterval);
+                enrollTimerInterval = null;
+            }
+            if (enrollRecorder && enrollRecorder.state === 'recording') {
+                enrollRecorder.stop();
+            }
+            if (enrollStream) {
+                enrollStream.getTracks().forEach(track => track.stop());
+            }
+            document.getElementById('startRecordBtn').disabled = false;
+            document.getElementById('stopRecordBtn').disabled = true;
+            document.getElementById('liveEnrollName').disabled = false;
+            document.getElementById('recordingTimer').textContent = '';
+        }
+        
+        async function enrollFromLive(blob) {
+            const name = document.getElementById('liveEnrollName').value.trim();
+            const resultBox = document.getElementById('enrollLiveResult');
+            
+            const formData = new FormData();
+            formData.append('audio', blob, 'enroll.webm');
+            formData.append('name', name);
+            
+            resultBox.className = 'result-box show';
+            resultBox.innerHTML = '<div class="loading show"><div class="spinner"></div><span>Processing...</span></div>';
+            
+            try {
+                const res = await fetch('/api/enroll-live', { method: 'POST', body: formData });
+                const data = await res.json();
+                
+                if (data.success) {
+                    resultBox.className = 'result-box show success';
+                    resultBox.innerHTML = `<div class="result-title">&#10003; Success</div><p>${data.message} (${data.duration}s recorded)</p>`;
+                    document.getElementById('liveEnrollName').value = '';
+                    checkStatus();
+                } else {
+                    resultBox.className = 'result-box show error';
+                    resultBox.innerHTML = `<div class="result-title">&#10007; Error</div><p>${data.error}</p>`;
+                }
+            } catch (error) {
+                resultBox.className = 'result-box show error';
+                resultBox.innerHTML = `<div class="result-title">&#10007; Error</div><p>${error.message}</p>`;
+            }
+        }
+        
+        // =============================================
+        // Live Recording Variables
+        // =============================================
+        let isLiveRunning = false;
+        let mediaRecorder = null;
+        let audioContext = null;
+        let analyser = null;
+        let animationId = null;
+        let recordingInterval = null;
+        
+        function initVisualizer() {
+            const container = document.getElementById('visualizer');
+            container.innerHTML = '';
+            for (let i = 0; i < 32; i++) {
+                const bar = document.createElement('div');
+                bar.className = 'visualizer-bar';
+                bar.style.height = '4px';
+                container.appendChild(bar);
+            }
+        }
+        
+        function updateVisualizer() {
+            if (!analyser) return;
+            const dataArray = new Uint8Array(analyser.frequencyBinCount);
+            analyser.getByteFrequencyData(dataArray);
+            const bars = document.querySelectorAll('.visualizer-bar');
+            const step = Math.floor(dataArray.length / bars.length);
+            bars.forEach((bar, i) => {
+                const value = dataArray[i * step];
+                const height = Math.max(4, (value / 255) * 60);
+                bar.style.height = `${height}px`;
+            });
+            if (isLiveRunning) {
+                animationId = requestAnimationFrame(updateVisualizer);
+            }
+        }
+        
+        async function startLive() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioContext.createMediaStreamSource(stream);
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                source.connect(analyser);
+                
+                mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+                let chunks = [];
+                
+                mediaRecorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) chunks.push(e.data);
+                };
+                
+                mediaRecorder.onstop = async () => {
+                    if (chunks.length > 0) {
+                        const blob = new Blob(chunks, { type: 'audio/webm' });
+                        chunks = [];
+                        await sendAudioChunk(blob);
+                    }
+                };
+                
+                isLiveRunning = true;
+                initVisualizer();
+                updateVisualizer();
+                
+                const recordChunk = () => {
+                    if (!isLiveRunning) return;
+                    mediaRecorder.start();
+                    setTimeout(() => {
+                        if (mediaRecorder.state === 'recording') mediaRecorder.stop();
+                    }, 2000);
+                };
+                
+                recordChunk();
+                recordingInterval = setInterval(recordChunk, 2500);
+                
+                document.getElementById('startLiveBtn').disabled = true;
+                document.getElementById('stopLiveBtn').disabled = false;
+                document.getElementById('liveStatus').innerHTML = '<div class="pulse-dot"></div><span>Listening...</span>';
+                document.getElementById('liveStatus').classList.add('recording');
+            } catch (error) {
+                alert('Could not access microphone: ' + error.message);
+            }
+        }
+        
+        function stopLive() {
+            isLiveRunning = false;
+            if (recordingInterval) { clearInterval(recordingInterval); recordingInterval = null; }
+            if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
+            if (mediaRecorder && mediaRecorder.stream) mediaRecorder.stream.getTracks().forEach(track => track.stop());
+            if (audioContext) { audioContext.close(); audioContext = null; }
+            if (animationId) cancelAnimationFrame(animationId);
+            document.querySelectorAll('.visualizer-bar').forEach(bar => bar.style.height = '4px');
+            document.getElementById('startLiveBtn').disabled = false;
+            document.getElementById('stopLiveBtn').disabled = true;
+            document.getElementById('liveStatus').innerHTML = '<span>Stopped</span>';
+            document.getElementById('liveStatus').classList.remove('recording');
+        }
+        
+        async function sendAudioChunk(blob) {
+            const threshold = document.getElementById('liveThreshold').value;
+            const formData = new FormData();
+            formData.append('audio', blob, 'chunk.webm');
+            formData.append('threshold', threshold);
+            try {
+                const res = await fetch('/api/identify-live', { method: 'POST', body: formData });
+                const data = await res.json();
+                if (data.success) updateLiveDisplay(data);
+            } catch (error) {
+                console.error('Request error:', error);
+            }
+        }
+        
+        function updateLiveDisplay(data) {
+            const speakerEl = document.getElementById('liveSpeaker');
+            const similarityEl = document.getElementById('liveSimilarity');
+            const scoresEl = document.getElementById('liveScores');
+            speakerEl.textContent = data.identified || 'Unknown';
+            speakerEl.classList.toggle('unknown', data.identified === 'Unknown');
+            similarityEl.textContent = `Similarity: ${Math.round((data.similarity || 0) * 100)}%`;
+            if (data.all_scores && Object.keys(data.all_scores).length > 0) {
+                scoresEl.innerHTML = Object.entries(data.all_scores)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([name, score]) => `
+                        <div class="live-score-card ${name === data.best_match ? 'best' : ''}">
+                            <div class="speaker-name">${name}</div>
+                            <div class="speaker-score">${Math.round(score * 100)}%</div>
+                        </div>
+                    `).join('');
+            }
+        }
+        
+        // =============================================
+        // Settings - Speaker Management
+        // =============================================
+        function updateSettingsSpeakerList(speakers) {
+            const container = document.getElementById('settingsSpeakerList');
+            
+            if (!speakers || speakers.length === 0) {
+                container.innerHTML = '<div class="empty-state">No speakers enrolled yet</div>';
+                return;
+            }
+            
+            container.innerHTML = speakers.map(name => `
+                <div class="speaker-item" id="speaker-item-${name.replace(/\s+/g, '-')}">
+                    <div class="speaker-name">${name}</div>
+                    <div class="edit-input">
+                        <input type="text" id="edit-${name.replace(/\s+/g, '-')}" value="${name}" placeholder="New name">
+                        <button class="btn btn-primary btn-small" onclick="saveRename('${name}')">Save</button>
+                        <button class="btn btn-small" style="background: #444; color: #fff;" onclick="cancelEdit('${name}')">Cancel</button>
+                    </div>
+                    <div class="speaker-actions">
+                        <button class="btn btn-primary btn-small" onclick="startEdit('${name}')">Rename</button>
+                        <button class="btn btn-danger btn-small" onclick="deleteSpeakerFromSettings('${name}')">Delete</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function startEdit(name) {
+            const item = document.getElementById(`speaker-item-${name.replace(/\s+/g, '-')}`);
+            if (item) {
+                item.classList.add('editing');
+                const input = document.getElementById(`edit-${name.replace(/\s+/g, '-')}`);
+                if (input) {
+                    input.focus();
+                    input.select();
+                }
+            }
+        }
+        
+        function cancelEdit(name) {
+            const item = document.getElementById(`speaker-item-${name.replace(/\s+/g, '-')}`);
+            if (item) {
+                item.classList.remove('editing');
+                const input = document.getElementById(`edit-${name.replace(/\s+/g, '-')}`);
+                if (input) input.value = name;
+            }
+        }
+        
+        async function saveRename(oldName) {
+            const input = document.getElementById(`edit-${oldName.replace(/\s+/g, '-')}`);
+            const newName = input ? input.value.trim() : '';
+            
+            if (!newName) {
+                alert('Please enter a valid name');
+                return;
+            }
+            
+            if (newName === oldName) {
+                cancelEdit(oldName);
+                return;
+            }
+            
+            try {
+                const res = await fetch(`/api/speakers/${encodeURIComponent(oldName)}/rename`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ new_name: newName })
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    checkStatus();
+                } else {
+                    alert('Rename failed: ' + data.error);
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+        
+        async function deleteSpeakerFromSettings(name) {
+            if (!confirm(`Are you sure you want to delete "${name}"?`)) return;
+            
+            try {
+                const res = await fetch(`/api/speakers/${encodeURIComponent(name)}`, {
+                    method: 'DELETE'
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    checkStatus();
+                } else {
+                    alert('Delete failed: ' + data.error);
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+        
+        // =============================================
+        // Original Functions
+        // =============================================
+        document.addEventListener('DOMContentLoaded', () => {
+            checkStatus();
+            initVisualizer();
+        });
+        
+        async function checkStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                
+                updateUI(data);
+            } catch (error) {
+                console.error('Status check failed:', error);
+            }
+        }
+        
+        function updateUI(data) {
+            const modelStatus = document.getElementById('modelStatus');
+            const modelStatusText = document.getElementById('modelStatusText');
+            const deviceInfo = document.getElementById('deviceInfo');
+            const speakerCount = document.getElementById('speakerCount');
+            const initBtn = document.getElementById('initBtn');
+            
+            if (data.model_loaded) {
+                modelStatus.classList.add('active');
+                modelStatusText.textContent = 'Model ready';
+                initBtn.textContent = 'Model Ready';
+                initBtn.disabled = true;
+            } else {
+                modelStatus.classList.remove('active');
+                modelStatusText.textContent = 'Model not loaded';
+                initBtn.textContent = 'Initialize Model';
+                initBtn.disabled = false;
+            }
+            
+            deviceInfo.textContent = data.device || '-';
+            speakerCount.textContent = data.speaker_count || 0;
+            
+            updateSpeakersList(data.speakers_enrolled || []);
+            updateSettingsSpeakerList(data.speakers_enrolled || []);
+        }
+        
+        function updateSpeakersList(speakers) {
+            const container = document.getElementById('speakerTags');
+            
+            if (speakers.length === 0) {
+                container.innerHTML = '<div class="empty-state">No speakers enrolled yet</div>';
+                return;
+            }
+            
+            container.innerHTML = speakers.map(name => `
+                <div class="speaker-tag">
+                    <span>${name}</span>
+                    <button class="delete-btn" onclick="deleteSpeaker('${name}')">&times;</button>
+                </div>
+            `).join('');
+        }
+        
+        async function initModel() {
+            const btn = document.getElementById('initBtn');
+            btn.disabled = true;
+            btn.textContent = 'Loading...';
+            
+            try {
+                const res = await fetch('/api/init', { method: 'POST' });
+                const data = await res.json();
+                
+                if (data.success) {
+                    checkStatus();
+                } else {
+                    alert('Failed to initialize model: ' + data.error);
+                    btn.disabled = false;
+                    btn.textContent = 'Initialize Model';
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+                btn.disabled = false;
+                btn.textContent = 'Initialize Model';
+            }
+        }
+        
+        function updateFileLabel(input, labelId) {
+            const label = document.getElementById(labelId);
+            if (input.files.length > 0) {
+                label.innerHTML = `<span>📁 ${input.files[0].name}</span>`;
+                label.classList.add('has-file');
+            } else {
+                label.innerHTML = '<span>Click or drag audio file here</span>';
+                label.classList.remove('has-file');
+            }
+        }
+        
+        async function enrollSpeaker(event) {
+            event.preventDefault();
+            
+            const name = document.getElementById('enrollName').value.trim();
+            const file = document.getElementById('enrollFile').files[0];
+            const resultBox = document.getElementById('enrollResult');
+            const loading = document.getElementById('enrollLoading');
+            
+            if (!name || !file) {
+                alert('Please provide both name and audio file');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('name', name);
+            formData.append('audio', file);
+            
+            loading.classList.add('show');
+            resultBox.classList.remove('show');
+            
+            try {
+                const res = await fetch('/api/enroll', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+                
+                loading.classList.remove('show');
+                
+                if (data.success) {
+                    resultBox.className = 'result-box show success';
+                    resultBox.innerHTML = `
+                        <div class="result-title">✓ Success</div>
+                        <p>${data.message}</p>
+                    `;
+                    document.getElementById('enrollForm').reset();
+                    document.getElementById('enrollFileLabel').innerHTML = '<span>Click or drag audio file here</span>';
+                    document.getElementById('enrollFileLabel').classList.remove('has-file');
+                    checkStatus();
+                } else {
+                    resultBox.className = 'result-box show error';
+                    resultBox.innerHTML = `
+                        <div class="result-title">✗ Error</div>
+                        <p>${data.error}</p>
+                    `;
+                }
+            } catch (error) {
+                loading.classList.remove('show');
+                resultBox.className = 'result-box show error';
+                resultBox.innerHTML = `
+                    <div class="result-title">✗ Error</div>
+                    <p>${error.message}</p>
+                `;
+            }
+        }
+        
+        async function identifySpeaker(event) {
+            event.preventDefault();
+            
+            const file = document.getElementById('identifyFile').files[0];
+            const threshold = document.getElementById('threshold').value;
+            const resultBox = document.getElementById('identifyResult');
+            const loading = document.getElementById('identifyLoading');
+            
+            if (!file) {
+                alert('Please select an audio file');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('audio', file);
+            formData.append('threshold', threshold);
+            
+            loading.classList.add('show');
+            resultBox.classList.remove('show');
+            
+            try {
+                const res = await fetch('/api/identify', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+                
+                loading.classList.remove('show');
+                
+                if (data.success) {
+                    const scorePercent = Math.round(data.similarity * 100);
+                    let scoresHtml = '';
+                    
+                    if (data.all_scores && Object.keys(data.all_scores).length > 0) {
+                        scoresHtml = `
+                            <div class="scores-breakdown">
+                                <h4>All Similarity Scores:</h4>
+                                ${Object.entries(data.all_scores)
+                                    .sort((a, b) => b[1] - a[1])
+                                    .map(([name, score]) => `
+                                        <div class="score-item">
+                                            <span class="name">${name}</span>
+                                            <div class="bar-container">
+                                                <div class="bar" style="width: ${score * 100}%"></div>
+                                            </div>
+                                            <span class="value">${(score * 100).toFixed(1)}%</span>
+                                        </div>
+                                    `).join('')}
+                            </div>
+                        `;
+                    }
+                    
+                    resultBox.className = 'result-box show success';
+                    resultBox.innerHTML = `
+                        <div class="result-title">Identification Result</div>
+                        <div class="result-speaker">${data.identified}</div>
+                        <p class="result-score">
+                            Best match: ${data.best_match} (${scorePercent}% similarity)
+                            <br>Threshold: ${data.threshold * 100}%
+                        </p>
+                        <div class="score-bar">
+                            <div class="score-fill" style="width: ${scorePercent}%"></div>
+                        </div>
+                        ${scoresHtml}
+                    `;
+                } else {
+                    resultBox.className = 'result-box show error';
+                    resultBox.innerHTML = `
+                        <div class="result-title">✗ Error</div>
+                        <p>${data.error}</p>
+                    `;
+                }
+            } catch (error) {
+                loading.classList.remove('show');
+                resultBox.className = 'result-box show error';
+                resultBox.innerHTML = `
+                    <div class="result-title">✗ Error</div>
+                    <p>${error.message}</p>
+                `;
+            }
+        }
+        
+        async function deleteSpeaker(name) {
+            if (!confirm(`Delete speaker "${name}"?`)) return;
+            
+            try {
+                const res = await fetch(`/api/speakers/${encodeURIComponent(name)}`, {
+                    method: 'DELETE'
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    checkStatus();
+                } else {
+                    alert('Failed to delete: ' + data.error);
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+        
+        async function clearAllSpeakers() {
+            if (!confirm('Are you sure you want to delete all enrolled speakers?')) return;
+            
+            try {
+                const res = await fetch('/api/clear', { method: 'POST' });
+                const data = await res.json();
+                
+                if (data.success) {
+                    checkStatus();
+                } else {
+                    alert('Failed to clear: ' + data.error);
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>
