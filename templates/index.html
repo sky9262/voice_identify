@@ -11,6 +11,11 @@
             padding: 0;
         }
         
+        .live-updating {
+            border-left: 3px solid #00ff88;
+            padding-left: 8px;
+        }
+        
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
             background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
@@ -950,6 +955,35 @@
                 </div>
             </div>
             
+            <!-- Model Selection -->
+            <div class="card" style="margin-bottom: 30px;">
+                <h2><span class="icon">⚙️</span> ASR Model Selection</h2>
+                <p style="color: #888; margin-bottom: 20px;">Select and initialize different Parakeet models for transcription.</p>
+                
+                <div style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 250px;">
+                        <label style="color: #888; font-size: 0.9em; display: block; margin-bottom: 8px;">Parakeet Model</label>
+                        <select id="parakeetModelSelect" style="width: 100%; padding: 12px; border-radius: 8px; background: #1a1a2e; border: 1px solid #333; color: #fff; font-size: 1em;">
+                            <option value="mlx-community/parakeet-tdt-1.1b">parakeet-tdt-1.1b (1.1B params, Most Accurate)</option>
+                            <option value="mlx-community/parakeet-tdt-0.6b-v3">parakeet-tdt-0.6b-v3 (600M params, Fast)</option>
+                            <option value="mlx-community/parakeet-ctc-1.1b">parakeet-ctc-1.1b (1.1B params, CTC)</option>
+                            <option value="mlx-community/parakeet-tdt-0.6b-v2">parakeet-tdt-0.6b-v2 (600M params, Older)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <button class="btn" onclick="initializeParakeetModel()" id="initModelBtn" style="background: linear-gradient(135deg, #00ff88, #00d4ff);">
+                            🚀 Initialize Model
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="modelInitStatus" style="margin-top: 15px; padding: 10px; border-radius: 8px; display: none;"></div>
+                
+                <div style="margin-top: 15px; color: #666; font-size: 0.85em;">
+                    <strong>Note:</strong> First initialization downloads the model (~1-2GB). This may take a few minutes.
+                </div>
+            </div>
+            
             <!-- Speaker Management -->
             <div class="card">
                 <h2><span class="icon">&#9881;</span> Enrolled Speakers Management</h2>
@@ -1862,7 +1896,20 @@
         let ytChunkStartTime = 0;
         let ytLastProcessTime = 0;
         let ytSpeakerCounts = {};
-        const YT_CHUNK_DURATION = 5; // Process every 5 seconds of audio
+        const YT_CHUNK_DURATION = 1; // 1 second chunks for fast live feel
+        
+        // Streaming state for speaker-change segmentation
+        let streamBuffer = '';
+        let streamSpeaker = 'Unknown';
+        let streamPrevEmbedding = null;
+        let streamStartTime = 0;
+        let currentLineElement = null; // Track current line for live updates
+        let consecutiveChanges = 0; // Counter for consecutive speaker change detections
+        let currentSpeakerId = 0; // Increments when speaker changes
+        let speakerLabels = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']; // Speaker labels
+        
+        // Chunk history for retroactive split (hybrid approach)
+        let chunkTextHistory = []; // {index, text, speaker} for retroactive split
         
         async function downloadYoutubeAudio() {
             const url = document.getElementById('youtubeUrl').value.trim();
@@ -1972,47 +2019,73 @@
                 return;
             }
             
+            // Auto-play if paused
+            if (audioPlayer.paused) {
+                try {
+                    await audioPlayer.play();
+                } catch (e) {
+                    alert('Please click play on the audio player first');
+                    return;
+                }
+            }
+            
+            // Check if Parakeet model is loaded
             try {
-                // Initialize Web Audio API
-                ytAudioContext = new (window.AudioContext || window.webkitAudioContext)();
-                
-                // Create media element source from audio player
-                ytMediaSource = ytAudioContext.createMediaElementSource(audioPlayer);
-                
-                // Create script processor for capturing audio (4096 samples buffer)
-                ytScriptProcessor = ytAudioContext.createScriptProcessor(4096, 1, 1);
-                
-                ytScriptProcessor.onaudioprocess = (e) => {
-                    // IMPORTANT: Pass audio through to output (so user can hear it)
-                    const inputData = e.inputBuffer.getChannelData(0);
-                    const outputData = e.outputBuffer.getChannelData(0);
-                    outputData.set(inputData); // Copy input to output for playback
+                const statusRes = await fetch('/api/status');
+                const status = await statusRes.json();
+                if (!status.parakeet_loaded) {
+                    alert('Parakeet ASR model not loaded!\n\nPlease go to Settings tab → ASR Model Selection → Select a model → Click Initialize Model');
+                    return;
+                }
+            } catch (e) {
+                console.error('Failed to check status:', e);
+            }
+            
+            try {
+                // Initialize Web Audio API - reuse existing if already created
+                if (!ytAudioContext) {
+                    ytAudioContext = new (window.AudioContext || window.webkitAudioContext)();
                     
-                    // Capture for enrollment if recording
-                    if (ytEnrollRecording) {
-                        ytEnrollChunks.push(new Float32Array(inputData));
-                        // Debug: log every 10th chunk
-                        if (ytEnrollChunks.length % 10 === 0) {
-                            console.log(`Enrollment chunks: ${ytEnrollChunks.length}, samples so far: ${ytEnrollChunks.length * inputData.length}`);
+                    // Create media element source from audio player (only once!)
+                    ytMediaSource = ytAudioContext.createMediaElementSource(audioPlayer);
+                    
+                    // Create script processor for capturing audio (4096 samples buffer)
+                    ytScriptProcessor = ytAudioContext.createScriptProcessor(4096, 1, 1);
+                    
+                    ytScriptProcessor.onaudioprocess = (e) => {
+                        // IMPORTANT: Pass audio through to output (so user can hear it)
+                        const inputData = e.inputBuffer.getChannelData(0);
+                        const outputData = e.outputBuffer.getChannelData(0);
+                        outputData.set(inputData); // Copy input to output for playback
+                        
+                        // Capture for enrollment if recording
+                        if (ytEnrollRecording) {
+                            ytEnrollChunks.push(new Float32Array(inputData));
+                            // Debug: log every 10th chunk
+                            if (ytEnrollChunks.length % 10 === 0) {
+                                console.log(`Enrollment chunks: ${ytEnrollChunks.length}, samples so far: ${ytEnrollChunks.length * inputData.length}`);
+                            }
                         }
-                    }
+                        
+                        if (!ytLiveProcessing || audioPlayer.paused) return;
+                        
+                        // Capture audio samples for processing
+                        const samples = new Float32Array(inputData);
+                        ytAudioChunks.push(samples);
+                        
+                        // Check if we should process a chunk
+                        const currentTime = audioPlayer.currentTime;
+                        if (currentTime - ytChunkStartTime >= YT_CHUNK_DURATION) {
+                            processYtAudioChunk();
+                        }
+                    };
                     
-                    if (!ytLiveProcessing || audioPlayer.paused) return;
-                    
-                    // Capture audio samples for processing
-                    const samples = new Float32Array(inputData);
-                    ytAudioChunks.push(samples);
-                    
-                    // Check if we should process a chunk
-                    const currentTime = audioPlayer.currentTime;
-                    if (currentTime - ytChunkStartTime >= YT_CHUNK_DURATION) {
-                        processYtAudioChunk();
-                    }
-                };
-                
-                // Connect: source -> processor -> destination
-                ytMediaSource.connect(ytScriptProcessor);
-                ytScriptProcessor.connect(ytAudioContext.destination);
+                    // Connect: source -> processor -> destination
+                    ytMediaSource.connect(ytScriptProcessor);
+                    ytScriptProcessor.connect(ytAudioContext.destination);
+                } else if (ytAudioContext.state === 'suspended') {
+                    await ytAudioContext.resume();
+                }
                 
                 ytLiveProcessing = true;
                 ytAudioChunks = [];
@@ -2039,6 +2112,21 @@
         
         function stopYoutubeLiveProcessing() {
             ytLiveProcessing = false;
+            
+            // Finalize current live line
+            if (currentLineElement) {
+                currentLineElement.classList.remove('live-updating');
+            }
+            
+            // Reset stream state
+            streamBuffer = '';
+            streamSpeaker = 'Unknown';
+            streamPrevEmbedding = null;
+            streamStartTime = 0;
+            currentLineElement = null;
+            consecutiveChanges = 0;
+            currentSpeakerId = 0;
+            chunkTextHistory = []; // Reset chunk history
             
             // Process any remaining audio
             if (ytAudioChunks.length > 0) {
@@ -2123,46 +2211,10 @@
                 return;
             }
             
-            // Create separate audio context for enrollment
-            try {
-                ytEnrollAudioContext = new (window.AudioContext || window.webkitAudioContext)();
-                ytEnrollSource = ytEnrollAudioContext.createMediaElementSource(audioPlayer);
-                ytEnrollProcessor = ytEnrollAudioContext.createScriptProcessor(4096, 1, 1);
-                
-                ytEnrollProcessor.onaudioprocess = (e) => {
-                    const inputData = e.inputBuffer.getChannelData(0);
-                    const outputData = e.outputBuffer.getChannelData(0);
-                    outputData.set(inputData); // Pass through for playback
-                    
-                    if (ytEnrollRecording) {
-                        ytEnrollChunks.push(new Float32Array(inputData));
-                    }
-                };
-                
-                ytEnrollSource.connect(ytEnrollProcessor);
-                ytEnrollProcessor.connect(ytEnrollAudioContext.destination);
-                
-                ytEnrollRecording = true;
-                ytEnrollChunks = [];
-                
-                // Get selected duration
-                const durationMs = parseInt(document.querySelector('input[name="ytEnrollDuration"]:checked').value);
-                const durationSec = durationMs / 1000;
-                
-                document.getElementById('ytStartRecordBtn').style.display = 'none';
-                document.getElementById('ytStopRecordBtn').style.display = 'inline-flex';
-                document.getElementById('ytEnrollStatus').textContent = `🔴 Recording ${durationSec}s...`;
-                document.getElementById('ytEnrollStatus').style.color = '#ff4444';
-                
-                // Auto-stop after selected duration
-                ytEnrollTimeout = setTimeout(() => {
-                    stopYtEnrollRecording();
-                }, durationMs);
-                
-            } catch (error) {
-                console.error('Failed to start enrollment recording:', error);
-                alert('Failed to start recording: ' + error.message);
-            }
+            // Live processing must be active for enrollment to capture audio
+            // Cannot create a new MediaElementSource if one was already created
+            alert('Please click "Start Live Processing" first, then record for enrollment.');
+            return;
         }
         
         async function stopYtEnrollRecording() {
@@ -2253,6 +2305,22 @@
                     document.getElementById('ytEnrollStatus').style.color = '#00ff88';
                     document.getElementById('ytEnrollName').value = '';
                     
+                    // Retroactively update transcript with matching hashes
+                    if (data.matching_hashes && data.matching_hashes.length > 0) {
+                        const transcriptContainer = document.getElementById('youtubeTranscript');
+                        data.matching_hashes.forEach(hash => {
+                            // Replace all instances of this hash with enrolled name
+                            transcriptContainer.innerHTML = transcriptContainer.innerHTML
+                                .replace(new RegExp(`\\[#${hash}\\]`, 'g'), `[${name}]`)
+                                .replace(new RegExp(`color:#ffa500">\\[#${hash}\\]`, 'g'), `color:#00ff88">[${name}]`);
+                            console.log(`Replaced #${hash} with ${name}`);
+                        });
+                        // Also update current streamSpeaker if it matches
+                        if (data.matching_hashes.includes(streamSpeaker.replace('#', ''))) {
+                            streamSpeaker = name;
+                        }
+                    }
+                    
                     // Refresh status to show new speaker
                     checkStatus();
                 } else {
@@ -2278,7 +2346,7 @@
             
             // Merge all chunks into one buffer
             const totalLength = ytAudioChunks.reduce((sum, chunk) => sum + chunk.length, 0);
-            if (totalLength < 1600) { // Less than 0.1 seconds at 16kHz
+            if (totalLength < 3200) { // Less than 0.2 seconds at 16kHz
                 ytAudioChunks = [];
                 ytChunkStartTime = currentTime;
                 return;
@@ -2293,75 +2361,197 @@
             
             // Record the timestamp for this chunk
             const chunkTime = ytChunkStartTime;
+            if (streamStartTime === 0) streamStartTime = chunkTime;
             
             // Clear chunks for next batch
             ytAudioChunks = [];
             ytChunkStartTime = currentTime;
             
-            // Convert to WAV and send to server
+            // Convert to WAV and send to streaming endpoint
             try {
                 const sampleRate = ytAudioContext ? ytAudioContext.sampleRate : 44100;
                 const wavBlob = float32ArrayToWav(mergedBuffer, sampleRate);
                 
-                // Send for transcription and speaker identification
                 const formData = new FormData();
                 formData.append('audio', wavBlob, 'chunk.wav');
+                formData.append('threshold', document.getElementById('threshold')?.value || '0.5');
                 formData.append('noise_level', document.getElementById('noiseLevel')?.value || '50');
+                if (streamPrevEmbedding) {
+                    formData.append('prev_embedding', JSON.stringify(streamPrevEmbedding));
+                }
                 
-                // Transcribe
-                const transcribeRes = await fetch('/api/transcribe', {
+                const res = await fetch('/api/process-streaming', {
                     method: 'POST',
                     body: formData
                 });
-                const transcribeData = await transcribeRes.json();
+                const data = await res.json();
                 
-                let text = '';
-                if (transcribeData.success && transcribeData.text) {
-                    text = transcribeData.text;
+                if (data.success) {
+                    // Skip empty transcriptions (silence) - don't split on silence
+                    if (!data.text || data.text.trim() === '') {
+                        // Just skip, don't split line
+                    } else {
+                        
+                        // Get current speaker from backend (enrolled name or hash)
+                        const currentSpeaker = data.speaker || 'Unknown';
+                        const chunkIndex = data.chunk_index;
+                        
+                        // Store in chunk history for retroactive split
+                        chunkTextHistory.push({
+                            index: chunkIndex,
+                            text: data.text,
+                            speaker: currentSpeaker,
+                            time: chunkTime
+                        });
+                        // Keep only last 15 entries
+                        if (chunkTextHistory.length > 15) {
+                            chunkTextHistory.shift();
+                        }
+                        
+                        // HYBRID SPEAKER CHANGE: Backend detected change with stable 3s embedding
+                        if (data.speaker_changed && data.split_at_chunk_index && currentLineElement) {
+                            console.log(`Speaker change detected! Split at chunk ${data.split_at_chunk_index}`);
+                            
+                            // Find the split point in chunk history
+                            const splitIdx = chunkTextHistory.findIndex(c => c.index >= data.split_at_chunk_index);
+                            
+                            if (splitIdx > 0) {
+                                // Split: chunks before splitIdx stay with old speaker
+                                // chunks from splitIdx onwards go to new speaker
+                                const oldChunks = chunkTextHistory.slice(0, splitIdx);
+                                const newChunks = chunkTextHistory.slice(splitIdx);
+                                
+                                // Finalize old line with old speaker's text
+                                const oldText = oldChunks.map(c => c.text).join(' ').trim();
+                                if (oldText && currentLineElement) {
+                                    currentLineElement.innerHTML = `<span style="color:#666">[${formatTime(streamStartTime)}]</span> <span style="color:#00ff88">[${streamSpeaker}]</span> ${oldText}`;
+                                    currentLineElement.classList.remove('live-updating');
+                                }
+                                
+                                // Start new line with new speaker
+                                currentLineElement = null;
+                                streamBuffer = newChunks.map(c => c.text).join(' ');
+                                streamStartTime = newChunks[0]?.time || chunkTime;
+                                streamSpeaker = currentSpeaker;
+                                
+                                // Clear history and start fresh
+                                chunkTextHistory = newChunks;
+                                
+                                // Create new line
+                                updateOrCreateLiveLine(streamStartTime, streamSpeaker, streamBuffer.trim());
+                            } else {
+                                // Can't find split point, just do normal split
+                                currentLineElement.classList.remove('live-updating');
+                                currentLineElement = null;
+                                streamBuffer = '';
+                                streamStartTime = chunkTime;
+                                streamSpeaker = currentSpeaker;
+                                chunkTextHistory = [];
+                            }
+                        } else {
+                            // Normal flow - no speaker change or waiting for stable detection
+                            // Start new line if buffer is empty
+                            if (streamBuffer.length === 0) {
+                                streamStartTime = chunkTime;
+                                streamSpeaker = currentSpeaker;
+                            }
+                            
+                            // Add to buffer
+                            streamBuffer += ' ' + data.text;
+                            
+                            // Live update or create line
+                            updateOrCreateLiveLine(streamStartTime, streamSpeaker, streamBuffer.trim());
+                            
+                            // Check for sentence end - split on sentence but keep same speaker
+                            // Only split if sentence has 5+ words (avoid splitting on short fragments)
+                            const trimmedBuffer = streamBuffer.trim();
+                            const wordCount = trimmedBuffer.split(/\s+/).length;
+                            if (trimmedBuffer.match(/[.!?]["']?$/) && wordCount >= 5) {
+                                // Sentence ended with enough words - finalize line and start new one with SAME speaker
+                                if (currentLineElement) {
+                                    currentLineElement.classList.remove('live-updating');
+                                    currentLineElement = null;
+                                }
+                                streamBuffer = '';
+                                streamStartTime = chunkTime + 1; // Next chunk's time
+                                chunkTextHistory = []; // Clear history on sentence end
+                                // Keep streamSpeaker the same - don't reset it
+                            }
+                        }
+                    }
+                    
+                    // Store embedding for next comparison
+                    streamPrevEmbedding = data.embedding;
+                    
+                    // Update speaker counts
+                    if (data.speaker !== 'Unknown') {
+                        ytSpeakerCounts[data.speaker] = (ytSpeakerCounts[data.speaker] || 0) + 1;
+                        updateYtSpeakerDisplay();
+                    }
                 }
-                
-                // Only proceed if we got some text
-                if (!text || text.trim() === '') {
-                    console.log('No speech detected in chunk');
-                    return;
-                }
-                
-                // Identify speaker
-                let speaker = 'Unknown';
-                const identifyFormData = new FormData();
-                identifyFormData.append('audio', wavBlob, 'chunk.wav');
-                identifyFormData.append('threshold', document.getElementById('threshold')?.value || '0.6');
-                identifyFormData.append('noise_level', '0'); // Already processed
-                
-                const identifyRes = await fetch('/api/identify-live', {
-                    method: 'POST',
-                    body: identifyFormData
-                });
-                const identifyData = await identifyRes.json();
-                
-                if (identifyData.success && identifyData.identified) {
-                    speaker = identifyData.identified;
-                    console.log(`Speaker identified: ${speaker} (similarity: ${identifyData.similarity})`);
-                }
-                
-                // Track speaker counts
-                ytSpeakerCounts[speaker] = (ytSpeakerCounts[speaker] || 0) + 1;
-                
-                // Add to transcript
-                const timeStr = formatTime(chunkTime);
-                const newLine = {
-                    time: timeStr,
-                    time_seconds: chunkTime,
-                    speaker: speaker,
-                    text: text
-                };
-                
-                youtubeTranscriptLines.push(newLine);
-                updateYoutubeTranscript(youtubeTranscriptLines);
-                
             } catch (error) {
                 console.error('Error processing audio chunk:', error);
             }
+        }
+        
+        function updateOrCreateLiveLine(timeSeconds, speaker, text) {
+            if (!text) return;
+            
+            const container = document.getElementById('youtubeTranscript');
+            const timeStr = formatTime(timeSeconds);
+            // Color: green for enrolled, orange for auto-assigned speakers
+                        const speakerColor = speaker.startsWith('Speaker ') ? '#ffa500' : '#00ff88';
+            
+            if (currentLineElement) {
+                // Update existing line
+                currentLineElement.innerHTML = `<span style="color:#666">[${timeStr}]</span> <span style="color:${speakerColor}">[${speaker}]</span> ${text}`;
+            } else {
+                // Create new line
+                const line = document.createElement('div');
+                line.className = 'transcript-line live-updating';
+                line.dataset.time = timeSeconds;
+                line.style.cursor = 'pointer';
+                line.onclick = () => seekToTime(timeSeconds);
+                line.innerHTML = `<span style="color:#666">[${timeStr}]</span> <span style="color:${speakerColor}">[${speaker}]</span> ${text}`;
+                container.appendChild(line);
+                currentLineElement = line;
+                
+                // Also add to transcript array
+                youtubeTranscriptLines.push({
+                    time: timeStr,
+                    time_seconds: timeSeconds,
+                    speaker: speaker,
+                    text: text,
+                    element: line
+                });
+            }
+            
+            // Update transcript array entry
+            const lastEntry = youtubeTranscriptLines[youtubeTranscriptLines.length - 1];
+            if (lastEntry && lastEntry.element === currentLineElement) {
+                lastEntry.text = text;
+            }
+            
+            // Auto-scroll if enabled
+            const autoScroll = document.getElementById('ytAutoScroll');
+            if (autoScroll?.checked && currentLineElement) {
+                currentLineElement.scrollIntoView({ behavior: 'smooth', block: 'end' });
+            }
+        }
+        
+        function emitTranscriptLine(timeSeconds, speaker, text) {
+            if (!text || !text.trim()) return;
+            
+            const timeStr = formatTime(timeSeconds);
+            const newLine = {
+                time: timeStr,
+                time_seconds: timeSeconds,
+                speaker: speaker,
+                text: text
+            };
+            
+            youtubeTranscriptLines.push(newLine);
+            updateYoutubeTranscript(youtubeTranscriptLines);
         }
         
         function float32ArrayToWav(samples, sampleRate) {
@@ -2550,6 +2740,20 @@
         function clearYoutubeTranscript() {
             youtubeTranscriptLines = [];
             ytSpeakerCounts = {};
+            
+            // Reset stream state
+            streamBuffer = '';
+            streamSpeaker = 'Unknown';
+            streamPrevEmbedding = null;
+            streamStartTime = 0;
+            currentLineElement = null;
+            consecutiveChanges = 0;
+            chunkTextHistory = []; // Reset chunk history
+            
+            // Reset session speaker clustering on backend
+            fetch('/api/reset-session-speakers', { method: 'POST' });
+            currentSpeakerId = 0;
+            
             document.getElementById('youtubeTranscript').innerHTML = '<div style="color: #666;">Start live processing and play the audio to see transcript here...</div>';
             document.getElementById('youtubeSpeakerResults').style.display = 'none';
         }
@@ -2614,11 +2818,19 @@
             
             if (transcribeModelEl) {
                 if (data.parakeet_loaded) {
-                    transcribeModelEl.textContent = 'Parakeet-MLX TDT';
-                    transcribeModelDescEl.textContent = 'mlx-community/parakeet-tdt-0.6b-v3 - Apple Silicon optimized ASR (TDT)';
+                    const modelShortName = data.parakeet_model_name ? data.parakeet_model_name.split('/').pop() : 'Parakeet-MLX';
+                    transcribeModelEl.textContent = modelShortName;
+                    transcribeModelDescEl.textContent = data.parakeet_model_name || 'Apple Silicon optimized ASR';
+                    
+                    // Update dropdown to show current model ONLY on first load
+                    const select = document.getElementById('parakeetModelSelect');
+                    if (select && data.parakeet_model_name && !window.modelSelectInitialized) {
+                        select.value = data.parakeet_model_name;
+                        window.modelSelectInitialized = true;
+                    }
                 } else if (data.parakeet_available) {
-                    transcribeModelEl.textContent = 'Parakeet-MLX (loading...)';
-                    transcribeModelDescEl.textContent = 'Model will load on first transcription';
+                    transcribeModelEl.textContent = 'Parakeet-MLX (not loaded)';
+                    transcribeModelDescEl.textContent = 'Select a model and click Initialize';
                 } else {
                     transcribeModelEl.textContent = 'Not available';
                     transcribeModelDescEl.textContent = 'Install with: pip install parakeet-mlx';
@@ -2845,7 +3057,50 @@
             }
         }
         
-        async function clearAllSpeakers() {
+        async function initializeParakeetModel() {
+                    const select = document.getElementById('parakeetModelSelect');
+                    const modelName = select.value;
+                    console.log('Selected model:', modelName); // Debug
+                    const statusDiv = document.getElementById('modelInitStatus');
+                    const btn = document.getElementById('initModelBtn');
+                    
+                    // Show loading state
+                    btn.disabled = true;
+                    btn.innerHTML = '⏳ Initializing...';
+                    statusDiv.style.display = 'block';
+                    statusDiv.style.background = 'rgba(255,170,0,0.2)';
+                    statusDiv.style.color = '#ffaa00';
+                    statusDiv.innerHTML = `<strong>Loading ${modelName}...</strong><br>This may take a few minutes for first-time download.`;
+                    
+                    try {
+                        const res = await fetch('/api/switch-parakeet-model', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ model: modelName })
+                        });
+                        const data = await res.json();
+                        
+                        if (data.success) {
+                            statusDiv.style.background = 'rgba(0,255,136,0.2)';
+                            statusDiv.style.color = '#00ff88';
+                            statusDiv.innerHTML = `<strong>✅ ${modelName} loaded successfully!</strong><br>Ready for transcription.`;
+                            checkStatus(); // Refresh status
+                        } else {
+                            statusDiv.style.background = 'rgba(255,68,68,0.2)';
+                            statusDiv.style.color = '#ff4444';
+                            statusDiv.innerHTML = `<strong>❌ Failed to load model</strong><br>${data.error}`;
+                        }
+                    } catch (error) {
+                        statusDiv.style.background = 'rgba(255,68,68,0.2)';
+                        statusDiv.style.color = '#ff4444';
+                        statusDiv.innerHTML = `<strong>❌ Error</strong><br>${error.message}`;
+                    } finally {
+                        btn.disabled = false;
+                        btn.innerHTML = '🚀 Initialize Model';
+                    }
+                }
+                
+                async function clearAllSpeakers() {
             if (!confirm('Are you sure you want to delete all enrolled speakers?')) return;
             
             try {

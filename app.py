@@ -67,6 +67,7 @@ except ImportError:
 # Parakeet-MLX (Apple Silicon optimized)
 PARAKEET_AVAILABLE = False
 parakeet_model = None
+current_parakeet_model_name = "mlx-community/parakeet-tdt-1.1b"  # Track current model
 try:
     from parakeet_mlx import from_pretrained as parakeet_from_pretrained
     PARAKEET_AVAILABLE = True
@@ -109,6 +110,57 @@ ecapa_model = None  # SpeechBrain ECAPA-TDNN
 speaker_memory = {}  # name -> embedding
 model_loaded = False
 youtube_jobs = {}  # job_id -> job status/results
+processing_lock = threading.Lock()  # Prevent concurrent GPU access
+
+# Persistence file for enrolled speakers
+SPEAKER_MEMORY_FILE = 'enrolled_speakers.pkl'
+
+# Audio accumulation for stable speaker ID (3+ seconds)
+accumulated_audio = []  # List of audio chunks
+ACCUM_DURATION_FOR_SPEAKER_ID = 3.0  # seconds
+
+# Chunk history for retroactive split detection (hybrid approach)
+chunk_history = []  # List of {embedding, text, index}
+MAX_CHUNK_HISTORY = 15  # Keep last 15 chunks (~15 seconds)
+last_stable_speaker = None  # Last speaker from 3-second stable detection
+chunk_index_counter = 0  # Global counter for chunk ordering
+
+def save_speaker_memory():
+    """Save enrolled speakers to disk."""
+    import pickle
+    try:
+        # Convert tensors to numpy for serialization
+        save_dict = {}
+        for name, emb in speaker_memory.items():
+            if hasattr(emb, 'cpu'):
+                save_dict[name] = emb.cpu().numpy()
+            else:
+                save_dict[name] = np.array(emb)
+        with open(SPEAKER_MEMORY_FILE, 'wb') as f:
+            pickle.dump(save_dict, f)
+        print(f"Saved {len(save_dict)} enrolled speakers to {SPEAKER_MEMORY_FILE}")
+    except Exception as e:
+        print(f"Error saving speaker memory: {e}")
+
+def load_speaker_memory():
+    """Load enrolled speakers from disk."""
+    import pickle
+    global speaker_memory
+    try:
+        if os.path.exists(SPEAKER_MEMORY_FILE):
+            with open(SPEAKER_MEMORY_FILE, 'rb') as f:
+                speaker_memory = pickle.load(f)
+            print(f"Loaded {len(speaker_memory)} enrolled speakers from {SPEAKER_MEMORY_FILE}")
+    except Exception as e:
+        print(f"Error loading speaker memory: {e}")
+
+# Load saved speakers on startup
+load_speaker_memory()
+
+# Session-based speaker clustering for stable IDs
+session_speakers = {}  # hash -> averaged_embedding
+session_speaker_counts = {}  # hash -> count (for averaging)
+SPEAKER_CLUSTER_THRESHOLD = 0.15  # Very aggressive for unstable embeddings
 
 
 def embedding_to_hash(embedding, length=8):
@@ -122,6 +174,47 @@ def embedding_to_hash(embedding, length=8):
     emb_bytes = emb_np.astype(np.float32).tobytes()
     full_hash = hashlib.sha256(emb_bytes).hexdigest()
     return full_hash[:length].upper()
+
+
+def get_stable_speaker_id(embedding):
+    """
+    Find or create a stable speaker ID by clustering similar embeddings.
+    Returns a consistent hash for the same speaker across chunks.
+    """
+    global session_speakers, session_speaker_counts
+    
+    # Convert to numpy
+    if hasattr(embedding, 'cpu'):
+        emb_np = embedding.cpu().numpy().flatten()
+    else:
+        emb_np = np.array(embedding).flatten()
+    
+    # Compare with existing session speakers
+    best_match = None
+    best_sim = 0
+    
+    for speaker_hash, stored_emb in session_speakers.items():
+        # Cosine similarity
+        sim = float(np.dot(emb_np, stored_emb.flatten()) / 
+                   (np.linalg.norm(emb_np) * np.linalg.norm(stored_emb) + 1e-8))
+        if sim > best_sim:
+            best_sim = sim
+            best_match = speaker_hash
+    
+    if best_match and best_sim >= SPEAKER_CLUSTER_THRESHOLD:
+        # Update running average for this speaker
+        count = session_speaker_counts[best_match]
+        session_speakers[best_match] = (session_speakers[best_match] * count + emb_np) / (count + 1)
+        session_speaker_counts[best_match] = count + 1
+        print(f"Matched existing speaker {best_match} (sim={best_sim:.3f})")
+        return best_match
+    else:
+        # New speaker - create new hash
+        new_hash = embedding_to_hash(emb_np, length=6)
+        session_speakers[new_hash] = emb_np.copy()
+        session_speaker_counts[new_hash] = 1
+        print(f"New speaker detected: {new_hash} (best_sim={best_sim:.3f})")
+        return new_hash
 
 
 def allowed_file(filename):
@@ -234,7 +327,7 @@ def init_model():
 
 def init_parakeet():
     """Initialize Parakeet-MLX model."""
-    global parakeet_model, PARAKEET_AVAILABLE
+    global parakeet_model, PARAKEET_AVAILABLE, current_parakeet_model_name
     
     if not PARAKEET_AVAILABLE:
         return False
@@ -243,10 +336,9 @@ def init_parakeet():
         return True
     
     try:
-        print("Loading Parakeet-MLX model (mlx-community/parakeet-tdt-0.6b-v3)...")
-        # Load the TDT model - more accurate than CTC
-        parakeet_model = parakeet_from_pretrained("mlx-community/parakeet-tdt-0.6b-v3")
-        print("Parakeet-MLX TDT model loaded successfully!")
+        print(f"Loading Parakeet-MLX model ({current_parakeet_model_name})...")
+        parakeet_model = parakeet_from_pretrained(current_parakeet_model_name)
+        print(f"Parakeet-MLX model {current_parakeet_model_name} loaded successfully!")
         return True
     except Exception as e:
         print(f"Failed to load Parakeet-MLX model: {e}")
@@ -254,6 +346,34 @@ def init_parakeet():
         traceback.print_exc()
         PARAKEET_AVAILABLE = False
         return False
+
+
+def switch_parakeet_model(model_name):
+    """Switch to a different Parakeet model."""
+    global parakeet_model, PARAKEET_AVAILABLE, current_parakeet_model_name
+    
+    print(f"switch_parakeet_model called with: {model_name}")  # Debug
+    print(f"Current model before switch: {current_parakeet_model_name}")  # Debug
+    
+    if not PARAKEET_AVAILABLE:
+        return False, "Parakeet-MLX not available"
+    
+    try:
+        print(f"Switching to Parakeet model: {model_name}...")
+        # Unload current model
+        parakeet_model = None
+        
+        # Load new model
+        parakeet_model = parakeet_from_pretrained(model_name)
+        current_parakeet_model_name = model_name
+        print(f"Parakeet model switched to {model_name} successfully!")
+        print(f"Current model after switch: {current_parakeet_model_name}")  # Debug
+        return True, None
+    except Exception as e:
+        print(f"Failed to switch Parakeet model: {e}")
+        import traceback
+        traceback.print_exc()
+        return False, str(e)
 
 
 def transcribe_with_parakeet(audio_path):
@@ -265,8 +385,8 @@ def transcribe_with_parakeet(audio_path):
         return None
     
     if parakeet_model is None:
-        if not init_parakeet():
-            return None
+        print("Parakeet model not loaded - please select and initialize a model in Settings")
+        return None
     
     try:
         # Use parakeet-mlx transcribe
@@ -353,6 +473,39 @@ def index():
     return render_template('index.html')
 
 
+@app.route('/api/switch-parakeet-model', methods=['POST'])
+def api_switch_parakeet_model():
+    """Switch to a different Parakeet model."""
+    data = request.get_json()
+    model_name = data.get('model') if data else None
+    print(f"API received model switch request: {model_name}")  # Debug
+    
+    if not model_name:
+        return jsonify({'success': False, 'error': 'No model specified'}), 400
+    
+    # Valid models
+    valid_models = [
+        'mlx-community/parakeet-tdt-1.1b',
+        'mlx-community/parakeet-tdt-0.6b-v3',
+        'mlx-community/parakeet-ctc-1.1b',
+        'mlx-community/parakeet-tdt-0.6b-v2'
+    ]
+    
+    if model_name not in valid_models:
+        return jsonify({'success': False, 'error': f'Invalid model. Valid options: {valid_models}'}), 400
+    
+    success, error = switch_parakeet_model(model_name)
+    
+    if success:
+        return jsonify({
+            'success': True,
+            'message': f'Switched to {model_name}',
+            'model': model_name
+        })
+    else:
+        return jsonify({'success': False, 'error': error}), 500
+
+
 @app.route('/api/status', methods=['GET'])
 def status():
     """Get system status."""
@@ -369,6 +522,7 @@ def status():
         'speaker_model': 'ECAPA-TDNN' if model_loaded else 'Not loaded',
         'parakeet_available': PARAKEET_AVAILABLE,
         'parakeet_loaded': parakeet_model is not None,
+        'parakeet_model_name': current_parakeet_model_name if parakeet_model is not None else None,
         'device': device,
         'speakers_enrolled': speakers_with_hash,
         'speaker_count': len(speaker_memory)
@@ -380,9 +534,9 @@ def initialize():
     """Initialize the model."""
     try:
         init_model()
-        # Also init Parakeet for transcription
-        if PARAKEET_AVAILABLE:
-            init_parakeet()
+        # Don't auto-init Parakeet - let user choose model in Settings
+        # if PARAKEET_AVAILABLE:
+        #     init_parakeet()
         return jsonify({'success': True, 'message': 'Model initialized successfully'})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -424,6 +578,9 @@ def enroll_speaker():
         
         # Clean up
         os.remove(filepath)
+        
+        # Save to disk for persistence
+        save_speaker_memory()
         
         return jsonify({
             'success': True,
@@ -513,6 +670,7 @@ def delete_speaker(name):
     """Delete an enrolled speaker."""
     if name in speaker_memory:
         del speaker_memory[name]
+        save_speaker_memory()  # Persist change
         return jsonify({'success': True, 'message': f"Speaker '{name}' deleted"})
     return jsonify({'success': False, 'error': 'Speaker not found'}), 404
 
@@ -532,6 +690,7 @@ def rename_speaker(name):
     
     # Move embedding to new name
     speaker_memory[new_name] = speaker_memory.pop(name)
+    save_speaker_memory()  # Persist change
     
     return jsonify({
         'success': True,
@@ -719,11 +878,37 @@ def enroll_live():
         speaker_memory[name] = emb
         print(f"Enrolled speaker '{name}' with embedding shape: {emb.shape}")
         
+        # Also add to session speakers so future chunks match by enrolled name
+        if hasattr(emb, 'cpu'):
+            session_emb = emb.cpu().numpy().flatten()
+        else:
+            session_emb = np.array(emb).flatten()
+        session_speakers[name] = session_emb
+        session_speaker_counts[name] = 1
+        
+        # Find matching session speakers to retroactively update
+        matching_hashes = []
+        if hasattr(emb, 'cpu'):
+            enrolled_np = emb.cpu().numpy().flatten()
+        else:
+            enrolled_np = np.array(emb).flatten()
+        
+        for session_hash, session_emb in session_speakers.items():
+            sim = float(np.dot(enrolled_np, session_emb.flatten()) / 
+                       (np.linalg.norm(enrolled_np) * np.linalg.norm(session_emb) + 1e-8))
+            if sim >= 0.20:  # Same threshold as clustering
+                matching_hashes.append(session_hash)
+                print(f"Enrolled '{name}' matches session speaker #{session_hash} (sim={sim:.3f})")
+        
+        # Save to disk for persistence
+        save_speaker_memory()
+        
         return jsonify({
             'success': True,
             'message': f"Speaker '{name}' enrolled successfully",
             'duration': round(duration, 1),
-            'speaker_count': len(speaker_memory)
+            'speaker_count': len(speaker_memory),
+            'matching_hashes': matching_hashes
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -820,6 +1005,207 @@ def transcribe_audio():
                 'error': 'Transcription returned empty result',
                 'use_browser': True
             })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/reset-session-speakers', methods=['POST'])
+def reset_session_speakers():
+    """Reset session speaker clustering for a fresh start."""
+    global session_speakers, session_speaker_counts, accumulated_audio, chunk_history, last_stable_speaker, chunk_index_counter
+    session_speakers = {}
+    session_speaker_counts = {}
+    accumulated_audio = []  # Reset audio accumulation
+    chunk_history = []  # Reset chunk history
+    last_stable_speaker = None
+    chunk_index_counter = 0
+    print("Session speakers, audio buffer, and chunk history reset")
+    return jsonify({'success': True})
+
+
+@app.route('/api/process-streaming', methods=['POST'])
+def process_streaming():
+    """Process small audio chunk for streaming transcription with speaker detection."""
+    if not model_loaded:
+        print("ERROR: Model not initialized")
+        return jsonify({'success': False, 'error': 'Model not initialized'}), 400
+    
+    if 'audio' not in request.files:
+        print(f"ERROR: No audio in request. Files: {list(request.files.keys())}")
+        return jsonify({'success': False, 'error': 'No audio data'}), 400
+    
+    threshold = float(request.form.get('threshold', 0.5))
+    noise_level = int(request.form.get('noise_level', 80))
+    prev_embedding_json = request.form.get('prev_embedding', None)
+    
+    try:
+        audio_file = request.files['audio']
+        audio_data = audio_file.read()
+        
+        # Auto-detect format
+        audio_format = 'webm'
+        if audio_file.filename and audio_file.filename.endswith('.wav'):
+            audio_format = 'wav'
+        
+        if audio_format == 'wav':
+            wav, sr = librosa.load(io.BytesIO(audio_data), sr=16000, mono=True)
+        else:
+            audio_segment = AudioSegment.from_file(io.BytesIO(audio_data), format="webm")
+            audio_segment = audio_segment.set_frame_rate(16000).set_channels(1)
+            wav_buffer = io.BytesIO()
+            audio_segment.export(wav_buffer, format="wav")
+            wav_buffer.seek(0)
+            wav, sr = librosa.load(wav_buffer, sr=16000, mono=True)
+        
+        # Apply noise reduction
+        wav = reduce_noise(wav, sr, level=noise_level)
+        
+        # Check for valid audio
+        if len(wav) < 1600 or np.max(np.abs(wav)) < 0.01:
+            return jsonify({
+                'success': True,
+                'text': '',
+                'speaker': 'Unknown',
+                'is_sentence_end': False,
+                'speaker_changed': False
+            })
+        
+        # Use lock for GPU operations to prevent race condition
+        with processing_lock:
+            # Save for transcription (fast, small chunk)
+            temp_path = os.path.join(app.config['UPLOAD_FOLDER'], 'temp_stream.wav')
+            sf.write(temp_path, wav, sr)
+            
+            # Transcribe (fast with small chunk)
+            text = transcribe_with_parakeet(temp_path)
+            if not text:
+                text = ''
+            
+            # Always extract per-chunk embedding for history tracking
+            chunk_embedding = extract_embedding(wav, sr)
+            
+            # Accumulate audio for speaker ID (need longer chunks for stability)
+            global accumulated_audio, chunk_history, last_stable_speaker, chunk_index_counter
+            accumulated_audio.append(wav)
+            
+            # Store in chunk history
+            chunk_index_counter += 1
+            if hasattr(chunk_embedding, 'cpu'):
+                chunk_emb_np = chunk_embedding.cpu().numpy().flatten()
+            else:
+                chunk_emb_np = np.array(chunk_embedding).flatten()
+            
+            chunk_history.append({
+                'embedding': chunk_emb_np.copy(),
+                'text': text,
+                'index': chunk_index_counter
+            })
+            # Keep only last N chunks
+            if len(chunk_history) > MAX_CHUNK_HISTORY:
+                chunk_history.pop(0)
+            
+            # Calculate total accumulated duration
+            total_samples = sum(len(chunk) for chunk in accumulated_audio)
+            total_duration = total_samples / sr
+            
+            # Variables for response
+            stable_embedding_ready = False
+            speaker_change_detected = False
+            split_at_index = None
+            
+            # Only do stable speaker detection when we have enough audio
+            if total_duration >= ACCUM_DURATION_FOR_SPEAKER_ID:
+                # Concatenate accumulated audio
+                accumulated_wav = np.concatenate(accumulated_audio)
+                current_embedding = extract_embedding(accumulated_wav, sr)
+                stable_embedding_ready = True
+                
+                # Keep last 2 seconds for continuity (sliding window)
+                keep_samples = int(2.0 * sr)
+                if len(accumulated_wav) > keep_samples:
+                    accumulated_audio = [accumulated_wav[-keep_samples:]]
+                else:
+                    accumulated_audio = [accumulated_wav]
+                print(f"Speaker ID with {total_duration:.1f}s accumulated audio")
+            else:
+                # Not enough audio yet - use chunk embedding
+                current_embedding = chunk_embedding
+                print(f"Accumulating audio: {total_duration:.1f}s / {ACCUM_DURATION_FOR_SPEAKER_ID}s")
+            
+            # Clean up
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+        
+        # Check for sentence end
+        is_sentence_end = bool(text) and text.rstrip().endswith(('.', '?', '!', '."', '?"', '!"'))
+        
+        # Convert to numpy for comparison and JSON
+        if hasattr(current_embedding, 'cpu'):
+            current_emb_np = current_embedding.cpu().numpy()
+        else:
+            current_emb_np = current_embedding
+        
+        # Identify speaker (use stable clustered ID if no enrolled match)
+        stable_speaker_id = get_stable_speaker_id(current_emb_np)
+        # Check if stable_speaker_id is an enrolled name (no # prefix) or a hash (needs # prefix)
+        if stable_speaker_id in speaker_memory:
+            speaker = stable_speaker_id  # Enrolled name
+        else:
+            speaker = f'#{stable_speaker_id}'  # Hash
+        best_sim = 0
+        if speaker_memory:
+            for name, emb in speaker_memory.items():
+                if hasattr(emb, 'cpu'):
+                    emb_np = emb.cpu().numpy()
+                else:
+                    emb_np = emb
+                sim = float(np.dot(current_emb_np.flatten(), emb_np.flatten()) / 
+                           (np.linalg.norm(current_emb_np) * np.linalg.norm(emb_np) + 1e-8))
+                if sim > best_sim and sim > threshold:
+                    best_sim = sim
+                    speaker = name  # Use enrolled name if matched
+        
+        # HYBRID SPEAKER CHANGE DETECTION
+        # Only check for speaker change when we have stable embedding (3+ seconds)
+        speaker_changed = False
+        split_at_chunk_index = None
+        
+        if stable_embedding_ready:
+            # Check if speaker changed from last stable detection
+            if last_stable_speaker is not None and speaker != last_stable_speaker:
+                speaker_changed = True
+                print(f"Speaker change detected: {last_stable_speaker} -> {speaker}")
+                
+                # Find exact split point by checking chunk history
+                # Look for first chunk that matches new speaker
+                if len(chunk_history) > 1:
+                    new_speaker_emb = current_emb_np.flatten()
+                    for i, chunk in enumerate(chunk_history[:-1]):  # Exclude current chunk
+                        chunk_emb = chunk['embedding']
+                        sim = float(np.dot(chunk_emb, new_speaker_emb) / 
+                                   (np.linalg.norm(chunk_emb) * np.linalg.norm(new_speaker_emb) + 1e-8))
+                        if sim > 0.20:  # Matches new speaker
+                            split_at_chunk_index = chunk['index']
+                            print(f"Split point found at chunk {split_at_chunk_index} (sim={sim:.3f})")
+                            break
+            
+            # Update last stable speaker
+            last_stable_speaker = speaker
+        
+        return jsonify({
+            'success': True,
+            'text': text,
+            'speaker': speaker,
+            'similarity': round(best_sim, 3),
+            'is_sentence_end': is_sentence_end,
+            'speaker_changed': speaker_changed,
+            'split_at_chunk_index': split_at_chunk_index,
+            'chunk_index': chunk_index_counter,
+            'embedding': current_emb_np.flatten().tolist()  # For next comparison
+        })
+        
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -1219,4 +1605,4 @@ if __name__ == '__main__':
     print("Starting Speaker Identification Web Server...")
     print(f"Device: {device}")
     print("Open http://localhost:5001 in your browser")
-    app.run(debug=True, host='0.0.0.0', port=5001)
+    app.run(debug=True, host='0.0.0.0', port=5001, use_reloader=False)
