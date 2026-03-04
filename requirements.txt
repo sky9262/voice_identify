@@ -8,3 +8,8 @@ numpy
 requests
 werkzeug
 pydub
+noisereduce
+mlx
+parakeet-mlx
+speechbrain
+yt-dlp

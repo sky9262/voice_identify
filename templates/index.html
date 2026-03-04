@@ -641,6 +641,7 @@
         <div class="tabs">
             <button class="tab-btn active" onclick="switchTab('manage')">Manage</button>
             <button class="tab-btn" onclick="switchTab('live')">Live</button>
+            <button class="tab-btn" onclick="switchTab('youtube')">YouTube</button>
             <button class="tab-btn" onclick="switchTab('settings')">Settings</button>
         </div>
         
@@ -762,6 +763,10 @@
                     <div class="visualizer-container" id="visualizer"></div>
                     <div class="live-speaker" id="liveSpeaker">-</div>
                     <div class="live-similarity" id="liveSimilarity">Similarity: -</div>
+                    <div id="liveTranscript" style="background: rgba(0,0,0,0.3); border-radius: 8px; padding: 15px; margin: 15px 0; max-height: 200px; overflow-y: auto;">
+                        <p style="color: #888; margin: 0 0 10px 0; font-size: 0.8em;">Live Transcript (say "My name is..." to enroll)</p>
+                        <div id="liveTranscriptLog" style="font-family: monospace; font-size: 0.95em; line-height: 1.6;"></div>
+                    </div>
                     <div class="live-status" id="liveStatus">
                         <span>Ready to start</span>
                     </div>
@@ -772,10 +777,31 @@
                     <button class="btn btn-danger" id="stopLiveBtn" onclick="stopLive()" disabled>Stop</button>
                 </div>
                 
+                <!-- Auto-enroll toggle -->
+                <div style="margin-top: 20px; padding: 15px; background: rgba(0,212,255,0.1); border-radius: 10px;">
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                        <input type="checkbox" id="autoEnrollToggle" checked style="width: 18px; height: 18px;">
+                        <span style="color: #00d4ff;">Auto-enroll when someone says "My name is..."</span>
+                    </label>
+                    <p style="color: #666; font-size: 0.85em; margin: 8px 0 0 28px;">New voices will be automatically registered during live identification</p>
+                </div>
+                
                 <div class="live-settings">
                     <div class="form-group">
                         <label>Similarity Threshold (0-1)</label>
-                        <input type="number" id="liveThreshold" value="0.5" min="0" max="1" step="0.05">
+                        <input type="number" id="liveThreshold" value="0.7" min="0.5" max="1" step="0.05">
+                    </div>
+                    <div class="form-group">
+                        <label>Noise Reduction: <span id="noiseReductionValue">80%</span></label>
+                        <input type="range" id="noiseReduction" min="0" max="100" value="80" step="5" 
+                               oninput="document.getElementById('noiseReductionValue').textContent = this.value + '%'">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.75em; color: #888;">
+                            <span>Off</span>
+                            <span>Light</span>
+                            <span>Medium</span>
+                            <span>Heavy</span>
+                            <span>Max</span>
+                        </div>
                     </div>
                 </div>
                 
@@ -783,8 +809,148 @@
             </div>
         </div>
         
+        <!-- YouTube Tab -->
+        <div class="tab-content" id="tab-youtube">
+            <div class="card">
+                <h2><span class="icon">📺</span> YouTube Audio Processing</h2>
+                <p style="color: #888; margin-bottom: 20px;">Download YouTube audio and process it in real-time as you play!</p>
+                
+                <div class="form-group">
+                    <label>YouTube URL</label>
+                    <input type="text" id="youtubeUrl" placeholder="https://www.youtube.com/watch?v=..." style="width: 100%;">
+                </div>
+                
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px;">
+                    <button class="btn btn-primary" id="downloadYoutubeBtn" onclick="downloadYoutubeAudio()">
+                        <span>⬇️</span> Download Audio
+                    </button>
+                </div>
+                
+                <div id="youtubeStatus" style="margin-bottom: 20px;">
+                    <div style="background: rgba(0,0,0,0.3); border-radius: 10px; padding: 15px;">
+                        <div style="color: #888;">Status: <span id="ytStatusText">Ready - Paste a YouTube URL and click Download</span></div>
+                        <div id="ytProgress" style="margin-top: 10px; display: none;">
+                            <div style="background: #333; border-radius: 5px; height: 8px; overflow: hidden;">
+                                <div id="ytProgressBar" style="background: linear-gradient(90deg, #00d4ff, #00ff88); height: 100%; width: 0%; transition: width 0.3s;"></div>
+                            </div>
+                            <div style="color: #888; font-size: 0.85em; margin-top: 5px;" id="ytProgressText"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Audio Player with Live Processing -->
+                <div id="youtubePlayerSection" style="display: none; margin-bottom: 20px;">
+                    <div style="background: rgba(0,212,255,0.1); border-radius: 10px; padding: 15px; border-left: 4px solid #00d4ff;">
+                        <div style="font-weight: bold; color: #00d4ff; margin-bottom: 10px;" id="ytVideoTitle">Video Title</div>
+                        <audio id="youtubeAudioPlayer" controls style="width: 100%; margin-bottom: 10px;" crossorigin="anonymous"></audio>
+                        <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 15px;">
+                            <span style="color: #888; font-size: 0.9em;">Current: <span id="ytCurrentTime">0:00</span></span>
+                            <span style="color: #666;">/</span>
+                            <span style="color: #888; font-size: 0.9em;" id="ytVideoDuration">0:00</span>
+                        </div>
+                        
+                        <!-- Live Processing Controls -->
+                        <div style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px;">
+                            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                                <button class="btn btn-success" id="startYtLiveBtn" onclick="startYoutubeLiveProcessing()">
+                                    <span>▶️</span> Start Live Processing
+                                </button>
+                                <button class="btn btn-danger" id="stopYtLiveBtn" onclick="stopYoutubeLiveProcessing()" disabled>
+                                    <span>⏹</span> Stop Processing
+                                </button>
+                                <span id="ytLiveStatus" style="color: #888; font-size: 0.9em;"></span>
+                            </div>
+                            <p style="color: #666; font-size: 0.85em; margin-top: 10px; margin-bottom: 0;">
+                                💡 Click "Start Live Processing" then play the audio. Only the parts you listen to will be transcribed and speaker-identified.
+                            </p>
+                        </div>
+                        
+                        <!-- Speaker Enrollment from YouTube -->
+                        <div style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px; margin-top: 15px;">
+                            <div style="color: #00ff88; font-weight: bold; margin-bottom: 10px;">🎤 Enroll Speaker from Video</div>
+                            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px;">
+                                <input type="text" id="ytEnrollName" placeholder="Speaker name" style="padding: 8px 12px; border-radius: 5px; border: 1px solid #444; background: #222; color: #fff; width: 150px;">
+                                <div style="display: flex; gap: 8px; align-items: center; color: #888; font-size: 0.9em;">
+                                    <label style="display: flex; align-items: center; gap: 3px; cursor: pointer;">
+                                        <input type="radio" name="ytEnrollDuration" value="3000"> 3s
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 3px; cursor: pointer;">
+                                        <input type="radio" name="ytEnrollDuration" value="5000" checked> 5s
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 3px; cursor: pointer;">
+                                        <input type="radio" name="ytEnrollDuration" value="10000"> 10s
+                                    </label>
+                                </div>
+                                <button class="btn" id="ytStartRecordBtn" onclick="startYtEnrollRecording()" style="background: #00ff88; color: #000;">
+                                    <span>⏺</span> Record
+                                </button>
+                                <button class="btn btn-danger" id="ytStopRecordBtn" onclick="stopYtEnrollRecording()" style="display: none;">
+                                    <span>⏹</span> Stop
+                                </button>
+                                <span id="ytEnrollStatus" style="color: #888; font-size: 0.9em;"></span>
+                            </div>
+                            <p style="color: #666; font-size: 0.85em; margin: 0;">
+                                💡 Play a segment with a speaker, click Record, then enter their name to enroll their voice.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Speaker Identification Results -->
+                <div id="youtubeSpeakerResults" style="display: none; margin-bottom: 20px;">
+                    <h3 style="color: #00d4ff; margin-bottom: 15px;">Identified Speakers</h3>
+                    <div id="ytSpeakerList" style="display: flex; flex-wrap: wrap; gap: 10px;"></div>
+                </div>
+            </div>
+            
+            <!-- YouTube Transcript -->
+            <div class="card">
+                <h2><span class="icon">📝</span> Live Transcript</h2>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <p style="color: #888; margin: 0;">Transcript appears as you play. Click any line to jump to that position.</p>
+                    <label style="display: flex; align-items: center; gap: 5px; color: #888; font-size: 0.9em; cursor: pointer;">
+                        <input type="checkbox" id="ytAutoScroll" checked style="cursor: pointer;">
+                        Auto-scroll
+                    </label>
+                </div>
+                <div id="youtubeTranscript" style="background: rgba(0,0,0,0.3); border-radius: 10px; padding: 15px; min-height: 200px; max-height: 500px; overflow-y: auto; font-family: monospace;">
+                    <div style="color: #666;">Start live processing and play the audio to see transcript here...</div>
+                </div>
+                <div style="margin-top: 15px; display: flex; gap: 10px;">
+                    <button class="btn" onclick="copyYoutubeTranscript()" style="background: #333;">📋 Copy Transcript</button>
+                    <button class="btn" onclick="clearYoutubeTranscript()" style="background: #333;">🗑️ Clear</button>
+                </div>
+            </div>
+        </div>
+        
         <!-- Settings Tab -->
         <div class="tab-content" id="tab-settings">
+            <!-- Models Info -->
+            <div class="card" style="margin-bottom: 30px;">
+                <h2><span class="icon">🤖</span> Active Models</h2>
+                <p style="color: #888; margin-bottom: 20px;">Models currently in use for speaker identification and transcription.</p>
+                
+                <div style="display: grid; gap: 15px;">
+                    <div style="background: rgba(0,212,255,0.1); border-radius: 10px; padding: 15px; border-left: 4px solid #00d4ff;">
+                        <div style="color: #00d4ff; font-weight: bold; margin-bottom: 5px;">Speaker Identification</div>
+                        <div style="color: #fff; font-size: 1.1em;" id="speakerModelName">Loading...</div>
+                        <div style="color: #888; font-size: 0.85em; margin-top: 5px;" id="speakerModelDesc"></div>
+                    </div>
+                    
+                    <div style="background: rgba(0,255,136,0.1); border-radius: 10px; padding: 15px; border-left: 4px solid #00ff88;">
+                        <div style="color: #00ff88; font-weight: bold; margin-bottom: 5px;">Speech-to-Text (Transcription)</div>
+                        <div style="color: #fff; font-size: 1.1em;" id="transcribeModelName">Loading...</div>
+                        <div style="color: #888; font-size: 0.85em; margin-top: 5px;" id="transcribeModelDesc"></div>
+                    </div>
+                    
+                    <div style="background: rgba(255,170,0,0.1); border-radius: 10px; padding: 15px; border-left: 4px solid #ffaa00;">
+                        <div style="color: #ffaa00; font-weight: bold; margin-bottom: 5px;">Device</div>
+                        <div style="color: #fff; font-size: 1.1em;" id="deviceName">Loading...</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Speaker Management -->
             <div class="card">
                 <h2><span class="icon">&#9881;</span> Enrolled Speakers Management</h2>
                 <p style="color: #888; margin-bottom: 20px;">View, rename, or delete enrolled speakers.</p>
@@ -800,7 +966,7 @@
         </div>
         
         <footer>
-            <p>Speaker Identification System using WavLM</p>
+            <p>Speaker Identification System - ECAPA-TDNN</p>
         </footer>
     </div>
     
@@ -900,8 +1066,15 @@
         
         async function startAutoEnroll() {
             try {
-                // Start audio recording
-                autoStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                // Start audio recording with noise suppression
+                autoStream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                        sampleRate: 16000
+                    } 
+                });
                 autoRecorder = new MediaRecorder(autoStream, { mimeType: 'audio/webm;codecs=opus' });
                 autoChunks = [];
                 finalTranscript = '';
@@ -1032,7 +1205,15 @@
             }
             
             try {
-                enrollStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                // Request microphone with noise suppression enabled
+                enrollStream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                        sampleRate: 16000
+                    } 
+                });
                 enrollRecorder = new MediaRecorder(enrollStream, { mimeType: 'audio/webm;codecs=opus' });
                 enrollChunks = [];
                 
@@ -1117,8 +1298,172 @@
         let mediaRecorder = null;
         let audioContext = null;
         let analyser = null;
+        let liveStream = null; // Store original stream for cleanup
         let animationId = null;
         let recordingInterval = null;
+        let liveSpeechRecognition = null;
+        let liveTranscriptBuffer = '';
+        let lastEnrolledName = '';
+        let pendingEnrollBlob = null;
+        let currentIdentifiedSpeaker = 'Unknown';
+        let transcriptLines = [];
+        let useParakeet = true; // Use server-side Parakeet ASR
+        let transcriptionQueue = []; // Queue for pending transcriptions
+        let sentenceBuffer = ''; // Buffer for accumulating sentence
+        let lastTranscriptTime = 0; // Track time between transcripts
+        let sentenceTimeout = null; // Timeout for flushing incomplete sentences
+        
+        function addTranscriptLine(speaker, text) {
+            if (!text || text.trim() === '') return;
+            
+            const logEl = document.getElementById('liveTranscriptLog');
+            const isUnknown = speaker === 'Unknown';
+            const color = isUnknown ? '#888' : '#00ff88';
+            const speakerLabel = `[${speaker}]`;
+            
+            // Add new line
+            const line = document.createElement('div');
+            line.innerHTML = `<span style="color: ${color}; font-weight: bold;">${speakerLabel}</span> <span style="color: #e0e0e0;">${text}</span>`;
+            logEl.appendChild(line);
+            
+            // Keep only last 10 lines
+            while (logEl.children.length > 10) {
+                logEl.removeChild(logEl.firstChild);
+            }
+            
+            // Auto-scroll
+            logEl.parentElement.scrollTop = logEl.parentElement.scrollHeight;
+        }
+        
+        function updateCurrentTranscript(speaker, text) {
+            const logEl = document.getElementById('liveTranscriptLog');
+            const isUnknown = speaker === 'Unknown';
+            const color = isUnknown ? '#888' : '#00ff88';
+            
+            // Update or create current line
+            let currentLine = document.getElementById('current-transcript-line');
+            if (!currentLine) {
+                currentLine = document.createElement('div');
+                currentLine.id = 'current-transcript-line';
+                currentLine.style.opacity = '0.7';
+                logEl.appendChild(currentLine);
+            }
+            
+            currentLine.innerHTML = `<span style="color: ${color}; font-weight: bold;">[${speaker}]</span> <span style="color: #aaa;">${text || '...'}</span>`;
+            logEl.parentElement.scrollTop = logEl.parentElement.scrollHeight;
+        }
+        
+        function initLiveSpeechRecognition() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                console.warn('Speech Recognition not supported');
+                return null;
+            }
+            
+            const recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'en-US';
+            
+            recognition.onresult = (event) => {
+                let transcript = '';
+                let isFinal = false;
+                
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    transcript += event.results[i][0].transcript;
+                    if (event.results[i].isFinal) isFinal = true;
+                }
+                
+                liveTranscriptBuffer = transcript;
+                
+                // Update current line with speaker label
+                updateCurrentTranscript(currentIdentifiedSpeaker, transcript);
+                
+                // If final, add as permanent line and check for name
+                if (isFinal && transcript.trim()) {
+                    // Remove current line indicator
+                    const currentLine = document.getElementById('current-transcript-line');
+                    if (currentLine) currentLine.remove();
+                    
+                    // Add permanent line
+                    addTranscriptLine(currentIdentifiedSpeaker, transcript);
+                    
+                    // Check for name pattern for auto-enroll
+                    const name = extractNameFromText(transcript);
+                    if (name && name !== lastEnrolledName && pendingEnrollBlob) {
+                        lastEnrolledName = name;
+                        autoEnrollFromLive(pendingEnrollBlob, name, transcript);
+                    }
+                }
+            };
+            
+            recognition.onerror = (event) => {
+                if (event.error !== 'no-speech') {
+                    console.error('Speech recognition error:', event.error);
+                }
+            };
+            
+            recognition.onend = () => {
+                // Restart if still running
+                if (isLiveRunning && document.getElementById('autoEnrollToggle').checked) {
+                    try { recognition.start(); } catch(e) {}
+                }
+            };
+            
+            return recognition;
+        }
+        
+        function extractNameFromText(text) {
+            if (!text) return null;
+            const patterns = [
+                /(?:my name is|i'm|i am|this is|call me|it's|its)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)/i,
+            ];
+            for (const pattern of patterns) {
+                const match = text.match(pattern);
+                if (match) {
+                    let name = match[1].trim();
+                    return name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+                }
+            }
+            return null;
+        }
+        
+        async function autoEnrollFromLive(audioBlob, name, transcript) {
+            // Show notification
+            const statusEl = document.getElementById('liveStatus');
+            statusEl.innerHTML = `<div class="pulse-dot"></div><span>Enrolling "${name}"...</span>`;
+            
+            const noiseLevel = document.getElementById('noiseReduction').value;
+            const formData = new FormData();
+            formData.append('audio', audioBlob, 'live-enroll.webm');
+            formData.append('transcript', transcript);
+            formData.append('noise_level', noiseLevel);
+            
+            try {
+                const res = await fetch('/api/auto-enroll', { method: 'POST', body: formData });
+                const data = await res.json();
+                
+                if (data.success) {
+                    // Show success briefly
+                    const speakerEl = document.getElementById('liveSpeaker');
+                    speakerEl.textContent = `✓ ${name} enrolled!`;
+                    speakerEl.style.color = '#00ff88';
+                    
+                    setTimeout(() => {
+                        speakerEl.style.color = '#00d4ff';
+                    }, 2000);
+                    
+                    checkStatus();
+                    liveTranscriptBuffer = '';
+                    document.getElementById('liveTranscriptText').textContent = '';
+                }
+                
+                statusEl.innerHTML = '<div class="pulse-dot"></div><span>Listening...</span>';
+            } catch (error) {
+                console.error('Auto-enroll error:', error);
+                statusEl.innerHTML = '<div class="pulse-dot"></div><span>Listening...</span>';
+            }
+        }
         
         function initVisualizer() {
             const container = document.getElementById('visualizer');
@@ -1149,14 +1494,46 @@
         
         async function startLive() {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                // Request microphone with noise suppression enabled
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                        sampleRate: 16000,
+                        channelCount: 1
+                    } 
+                });
+                
+                liveStream = stream; // Store for cleanup
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
                 const source = audioContext.createMediaStreamSource(stream);
+                
+                // Add high-pass filter to remove low-frequency noise (rumble, AC hum)
+                const highPassFilter = audioContext.createBiquadFilter();
+                highPassFilter.type = 'highpass';
+                highPassFilter.frequency.value = 80; // Cut frequencies below 80Hz
+                highPassFilter.Q.value = 0.7;
+                
+                // Add low-pass filter to remove high-frequency noise
+                const lowPassFilter = audioContext.createBiquadFilter();
+                lowPassFilter.type = 'lowpass';
+                lowPassFilter.frequency.value = 8000; // Cut frequencies above 8kHz
+                lowPassFilter.Q.value = 0.7;
+                
                 analyser = audioContext.createAnalyser();
                 analyser.fftSize = 256;
-                source.connect(analyser);
                 
-                mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+                // Connect: source -> highpass -> lowpass -> analyser
+                source.connect(highPassFilter);
+                highPassFilter.connect(lowPassFilter);
+                lowPassFilter.connect(analyser);
+                
+                // Create filtered stream for recording
+                const filteredDest = audioContext.createMediaStreamDestination();
+                lowPassFilter.connect(filteredDest);
+                
+                mediaRecorder = new MediaRecorder(filteredDest.stream, { mimeType: 'audio/webm;codecs=opus' });
                 let chunks = [];
                 
                 mediaRecorder.ondataavailable = (e) => {
@@ -1167,20 +1544,35 @@
                     if (chunks.length > 0) {
                         const blob = new Blob(chunks, { type: 'audio/webm' });
                         chunks = [];
+                        pendingEnrollBlob = blob; // Save for potential auto-enroll
                         await sendAudioChunk(blob);
                     }
                 };
                 
                 isLiveRunning = true;
+                lastEnrolledName = '';
+                liveTranscriptBuffer = '';
+                currentIdentifiedSpeaker = 'Unknown';
+                document.getElementById('liveTranscriptLog').innerHTML = '';
                 initVisualizer();
                 updateVisualizer();
+                
+                // Start speech recognition if auto-enroll is enabled (fallback for when Parakeet is not available)
+                // Parakeet transcription is handled in sendAudioChunk/transcribeWithParakeet
+                // Browser speech recognition is kept as fallback
+                if (document.getElementById('autoEnrollToggle').checked && !useParakeet) {
+                    liveSpeechRecognition = initLiveSpeechRecognition();
+                    if (liveSpeechRecognition) {
+                        try { liveSpeechRecognition.start(); } catch(e) {}
+                    }
+                }
                 
                 const recordChunk = () => {
                     if (!isLiveRunning) return;
                     mediaRecorder.start();
                     setTimeout(() => {
                         if (mediaRecorder.state === 'recording') mediaRecorder.stop();
-                    }, 2000);
+                    }, 2000); // 2 seconds - Vosk is fast enough
                 };
                 
                 recordChunk();
@@ -1199,27 +1591,129 @@
             isLiveRunning = false;
             if (recordingInterval) { clearInterval(recordingInterval); recordingInterval = null; }
             if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
-            if (mediaRecorder && mediaRecorder.stream) mediaRecorder.stream.getTracks().forEach(track => track.stop());
+            if (liveStream) { liveStream.getTracks().forEach(track => track.stop()); liveStream = null; }
             if (audioContext) { audioContext.close(); audioContext = null; }
             if (animationId) cancelAnimationFrame(animationId);
+            
+            // Stop speech recognition
+            if (liveSpeechRecognition) {
+                try { liveSpeechRecognition.stop(); } catch(e) {}
+                liveSpeechRecognition = null;
+            }
+            
+            // Flush any remaining sentence buffer
+            if (sentenceTimeout) { clearTimeout(sentenceTimeout); sentenceTimeout = null; }
+            if (sentenceBuffer.trim()) {
+                addTranscriptLine(currentIdentifiedSpeaker, sentenceBuffer.trim());
+                sentenceBuffer = '';
+            }
+            
             document.querySelectorAll('.visualizer-bar').forEach(bar => bar.style.height = '4px');
             document.getElementById('startLiveBtn').disabled = false;
             document.getElementById('stopLiveBtn').disabled = true;
             document.getElementById('liveStatus').innerHTML = '<span>Stopped</span>';
             document.getElementById('liveStatus').classList.remove('recording');
+            currentIdentifiedSpeaker = 'Unknown';
+            pendingEnrollBlob = null;
         }
         
         async function sendAudioChunk(blob) {
             const threshold = document.getElementById('liveThreshold').value;
+            const noiseLevel = document.getElementById('noiseReduction').value;
             const formData = new FormData();
             formData.append('audio', blob, 'chunk.webm');
             formData.append('threshold', threshold);
+            formData.append('noise_level', noiseLevel);
+            
             try {
+                // Send for identification
                 const res = await fetch('/api/identify-live', { method: 'POST', body: formData });
                 const data = await res.json();
-                if (data.success) updateLiveDisplay(data);
+                
+                if (data.success) {
+                    updateLiveDisplay(data);
+                } else if (data.error && data.error.includes('No speakers enrolled')) {
+                    // Show helpful message
+                    document.getElementById('liveSpeaker').textContent = 'No speakers enrolled';
+                    document.getElementById('liveSpeaker').classList.add('unknown');
+                    document.getElementById('liveSimilarity').textContent = 'Say "My name is [Name]" to enroll';
+                    currentIdentifiedSpeaker = 'Unknown';
+                }
+                
+                // Always transcribe with Parakeet
+                pendingEnrollBlob = blob; // Save for potential enrollment
+                transcribeWithParakeet(blob);
             } catch (error) {
                 console.error('Request error:', error);
+            }
+        }
+        
+        async function transcribeWithParakeet(blob) {
+            const noiseLevel = document.getElementById('noiseReduction').value;
+            const formData = new FormData();
+            formData.append('audio', blob, 'transcribe.webm');
+            formData.append('noise_level', noiseLevel);
+            
+            try {
+                const res = await fetch('/api/transcribe', { method: 'POST', body: formData });
+                const data = await res.json();
+                
+                if (data.success && data.text && data.text.trim() !== '') {
+                    const text = data.text.trim();
+                    console.log('Transcription:', text);
+                    
+                    // Add to sentence buffer
+                    if (sentenceBuffer) {
+                        sentenceBuffer += ' ' + text;
+                    } else {
+                        sentenceBuffer = text;
+                    }
+                    
+                    // Clear any pending timeout
+                    if (sentenceTimeout) {
+                        clearTimeout(sentenceTimeout);
+                    }
+                    
+                    // Check if sentence is complete (ends with . ! ? or is long enough)
+                    const hasPunctuation = /[.!?]$/.test(sentenceBuffer.trim());
+                    const isLongEnough = sentenceBuffer.split(' ').length >= 8; // 8+ words
+                    
+                    if (hasPunctuation || isLongEnough) {
+                        // Display the buffer
+                        addTranscriptLine(currentIdentifiedSpeaker, sentenceBuffer.trim());
+                        
+                        // Check for name pattern for auto-enroll (only if enabled)
+                        if (document.getElementById('autoEnrollToggle').checked) {
+                            const name = extractNameFromText(sentenceBuffer);
+                            if (name && name !== lastEnrolledName && pendingEnrollBlob) {
+                                lastEnrolledName = name;
+                                autoEnrollFromLive(pendingEnrollBlob, name, sentenceBuffer);
+                            }
+                        }
+                        
+                        sentenceBuffer = '';
+                    } else {
+                        // Set timeout to flush after 2 seconds of no new text
+                        sentenceTimeout = setTimeout(() => {
+                            if (sentenceBuffer.trim()) {
+                                addTranscriptLine(currentIdentifiedSpeaker, sentenceBuffer.trim());
+                                
+                                // Check for name pattern (only if auto-enroll enabled)
+                                if (document.getElementById('autoEnrollToggle').checked) {
+                                    const name = extractNameFromText(sentenceBuffer);
+                                    if (name && name !== lastEnrolledName && pendingEnrollBlob) {
+                                        lastEnrolledName = name;
+                                        autoEnrollFromLive(pendingEnrollBlob, name, sentenceBuffer);
+                                    }
+                                }
+                                
+                                sentenceBuffer = '';
+                            }
+                        }, 2000); // Flush after 2 seconds of no new text
+                    }
+                }
+            } catch (error) {
+                console.error('Transcription error:', error);
             }
         }
         
@@ -1227,6 +1721,10 @@
             const speakerEl = document.getElementById('liveSpeaker');
             const similarityEl = document.getElementById('liveSimilarity');
             const scoresEl = document.getElementById('liveScores');
+            
+            // Update current identified speaker for transcript
+            currentIdentifiedSpeaker = data.identified || 'Unknown';
+            
             speakerEl.textContent = data.identified || 'Unknown';
             speakerEl.classList.toggle('unknown', data.identified === 'Unknown');
             similarityEl.textContent = `Similarity: ${Math.round((data.similarity || 0) * 100)}%`;
@@ -1253,11 +1751,18 @@
                 return;
             }
             
-            container.innerHTML = speakers.map(name => `
-                <div class="speaker-item" id="speaker-item-${name.replace(/\s+/g, '-')}">
-                    <div class="speaker-name">${name}</div>
+            container.innerHTML = speakers.map(speaker => {
+                const name = speaker.name || speaker;
+                const hash = speaker.hash || '';
+                const safeId = name.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '');
+                return `
+                <div class="speaker-item" id="speaker-item-${safeId}">
+                    <div class="speaker-name">
+                        ${name}
+                        ${hash ? `<span style="color: #888; font-size: 0.8em; font-family: monospace; margin-left: 8px;">[${hash}]</span>` : ''}
+                    </div>
                     <div class="edit-input">
-                        <input type="text" id="edit-${name.replace(/\s+/g, '-')}" value="${name}" placeholder="New name">
+                        <input type="text" id="edit-${safeId}" value="${name}" placeholder="New name">
                         <button class="btn btn-primary btn-small" onclick="saveRename('${name}')">Save</button>
                         <button class="btn btn-small" style="background: #444; color: #fff;" onclick="cancelEdit('${name}')">Cancel</button>
                     </div>
@@ -1266,7 +1771,7 @@
                         <button class="btn btn-danger btn-small" onclick="deleteSpeakerFromSettings('${name}')">Delete</button>
                     </div>
                 </div>
-            `).join('');
+            `}).join('');
         }
         
         function startEdit(name) {
@@ -1342,6 +1847,714 @@
         }
         
         // =============================================
+        // YouTube Real-Time Processing Functions
+        // =============================================
+        let youtubeTranscriptLines = [];
+        let currentYoutubeJobId = null;
+        let currentAudioUrl = null;
+        
+        // Web Audio API for capturing audio from player
+        let ytAudioContext = null;
+        let ytMediaSource = null;
+        let ytScriptProcessor = null;
+        let ytLiveProcessing = false;
+        let ytAudioChunks = [];
+        let ytChunkStartTime = 0;
+        let ytLastProcessTime = 0;
+        let ytSpeakerCounts = {};
+        const YT_CHUNK_DURATION = 5; // Process every 5 seconds of audio
+        
+        async function downloadYoutubeAudio() {
+            const url = document.getElementById('youtubeUrl').value.trim();
+            if (!url) {
+                alert('Please enter a YouTube URL');
+                return;
+            }
+            
+            // Validate YouTube URL
+            if (!url.includes('youtube.com') && !url.includes('youtu.be')) {
+                alert('Please enter a valid YouTube URL');
+                return;
+            }
+            
+            document.getElementById('downloadYoutubeBtn').disabled = true;
+            document.getElementById('ytStatusText').textContent = 'Checking for cached audio...';
+            document.getElementById('ytProgress').style.display = 'block';
+            document.getElementById('ytProgressBar').style.width = '50%';
+            document.getElementById('youtubePlayerSection').style.display = 'none';
+            
+            try {
+                const res = await fetch('/api/youtube/download', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: url })
+                });
+                
+                const data = await res.json();
+                
+                if (data.success) {
+                    currentYoutubeJobId = data.job_id;
+                    currentAudioUrl = data.audio_url;
+                    
+                    // Show video info and player
+                    document.getElementById('ytVideoTitle').textContent = data.title || 'Unknown Title';
+                    document.getElementById('ytVideoDuration').textContent = data.duration || '0:00';
+                    
+                    // Set audio source
+                    const audioPlayer = document.getElementById('youtubeAudioPlayer');
+                    audioPlayer.src = data.audio_url;
+                    audioPlayer.load();
+                    document.getElementById('youtubePlayerSection').style.display = 'block';
+                    
+                    // Setup audio player events
+                    setupAudioPlayerEvents();
+                    
+                    const cacheStatus = data.cached ? '⚡ Loaded from cache!' : '✅ Downloaded!';
+                    document.getElementById('ytStatusText').textContent = `${cacheStatus} Click "Start Live Processing" then play the audio.`;
+                    document.getElementById('ytProgressBar').style.width = '100%';
+                    
+                    setTimeout(() => {
+                        document.getElementById('ytProgress').style.display = 'none';
+                        document.getElementById('downloadYoutubeBtn').disabled = false;
+                    }, 1000);
+                } else {
+                    throw new Error(data.error || 'Failed to download YouTube audio');
+                }
+            } catch (error) {
+                console.error('YouTube download error:', error);
+                document.getElementById('ytStatusText').textContent = `Error: ${error.message}`;
+                document.getElementById('ytProgressBar').style.width = '0%';
+                document.getElementById('downloadYoutubeBtn').disabled = false;
+                document.getElementById('ytProgress').style.display = 'none';
+            }
+        }
+        
+        function setupAudioPlayerEvents() {
+            const audioPlayer = document.getElementById('youtubeAudioPlayer');
+            
+            audioPlayer.ontimeupdate = () => {
+                const currentTime = audioPlayer.currentTime;
+                const minutes = Math.floor(currentTime / 60);
+                const seconds = Math.floor(currentTime % 60);
+                document.getElementById('ytCurrentTime').textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+                
+                // Highlight current transcript line
+                highlightCurrentTranscriptLine(currentTime);
+            };
+            
+            audioPlayer.onloadedmetadata = () => {
+                const duration = audioPlayer.duration;
+                const minutes = Math.floor(duration / 60);
+                const seconds = Math.floor(duration % 60);
+                document.getElementById('ytVideoDuration').textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            };
+            
+            // Handle audio ending
+            audioPlayer.onended = () => {
+                if (ytLiveProcessing) {
+                    // Process any remaining audio
+                    processYtAudioChunk(true);
+                }
+            };
+            
+            // Handle pause - process accumulated audio
+            audioPlayer.onpause = () => {
+                if (ytLiveProcessing && ytAudioChunks.length > 0) {
+                    processYtAudioChunk(true);
+                }
+            };
+        }
+        
+        async function startYoutubeLiveProcessing() {
+            const audioPlayer = document.getElementById('youtubeAudioPlayer');
+            if (!audioPlayer.src) {
+                alert('Please download a YouTube video first');
+                return;
+            }
+            
+            try {
+                // Initialize Web Audio API
+                ytAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+                
+                // Create media element source from audio player
+                ytMediaSource = ytAudioContext.createMediaElementSource(audioPlayer);
+                
+                // Create script processor for capturing audio (4096 samples buffer)
+                ytScriptProcessor = ytAudioContext.createScriptProcessor(4096, 1, 1);
+                
+                ytScriptProcessor.onaudioprocess = (e) => {
+                    // IMPORTANT: Pass audio through to output (so user can hear it)
+                    const inputData = e.inputBuffer.getChannelData(0);
+                    const outputData = e.outputBuffer.getChannelData(0);
+                    outputData.set(inputData); // Copy input to output for playback
+                    
+                    // Capture for enrollment if recording
+                    if (ytEnrollRecording) {
+                        ytEnrollChunks.push(new Float32Array(inputData));
+                        // Debug: log every 10th chunk
+                        if (ytEnrollChunks.length % 10 === 0) {
+                            console.log(`Enrollment chunks: ${ytEnrollChunks.length}, samples so far: ${ytEnrollChunks.length * inputData.length}`);
+                        }
+                    }
+                    
+                    if (!ytLiveProcessing || audioPlayer.paused) return;
+                    
+                    // Capture audio samples for processing
+                    const samples = new Float32Array(inputData);
+                    ytAudioChunks.push(samples);
+                    
+                    // Check if we should process a chunk
+                    const currentTime = audioPlayer.currentTime;
+                    if (currentTime - ytChunkStartTime >= YT_CHUNK_DURATION) {
+                        processYtAudioChunk();
+                    }
+                };
+                
+                // Connect: source -> processor -> destination
+                ytMediaSource.connect(ytScriptProcessor);
+                ytScriptProcessor.connect(ytAudioContext.destination);
+                
+                ytLiveProcessing = true;
+                ytAudioChunks = [];
+                ytChunkStartTime = audioPlayer.currentTime;
+                ytLastProcessTime = audioPlayer.currentTime;
+                
+                document.getElementById('startYtLiveBtn').disabled = true;
+                document.getElementById('stopYtLiveBtn').disabled = false;
+                document.getElementById('ytLiveStatus').textContent = '🔴 Live processing active';
+                document.getElementById('ytLiveStatus').style.color = '#ff4444';
+                
+                // Clear previous transcript
+                youtubeTranscriptLines = [];
+                ytSpeakerCounts = {};
+                document.getElementById('youtubeTranscript').innerHTML = '<div style="color: #888;">Listening... Play the audio to transcribe.</div>';
+                document.getElementById('youtubeSpeakerResults').style.display = 'none';
+                
+                console.log('YouTube live processing started');
+            } catch (error) {
+                console.error('Failed to start live processing:', error);
+                alert('Failed to start live processing: ' + error.message);
+            }
+        }
+        
+        function stopYoutubeLiveProcessing() {
+            ytLiveProcessing = false;
+            
+            // Process any remaining audio
+            if (ytAudioChunks.length > 0) {
+                processYtAudioChunk(true);
+            }
+            
+            // Disconnect Web Audio
+            if (ytScriptProcessor) {
+                ytScriptProcessor.disconnect();
+                ytScriptProcessor = null;
+            }
+            if (ytMediaSource) {
+                ytMediaSource.disconnect();
+                ytMediaSource = null;
+            }
+            if (ytAudioContext) {
+                ytAudioContext.close();
+                ytAudioContext = null;
+            }
+            
+            document.getElementById('startYtLiveBtn').disabled = false;
+            document.getElementById('stopYtLiveBtn').disabled = true;
+            document.getElementById('ytLiveStatus').textContent = 'Processing stopped';
+            document.getElementById('ytLiveStatus').style.color = '#888';
+            
+            // Update speaker summary
+            updateYtSpeakerSummary();
+            
+            console.log('YouTube live processing stopped');
+        }
+        
+        // =============================================
+        // YouTube Speaker Enrollment
+        // =============================================
+        let ytEnrollRecording = false;
+        let ytEnrollChunks = [];
+        let ytEnrollAudioContext = null;
+        let ytEnrollSource = null;
+        let ytEnrollProcessor = null;
+        let ytEnrollTimeout = null;
+        
+        async function startYtEnrollRecording() {
+            const audioPlayer = document.getElementById('youtubeAudioPlayer');
+            const name = document.getElementById('ytEnrollName').value.trim();
+            
+            if (!audioPlayer.src) {
+                alert('Please download a YouTube video first');
+                return;
+            }
+            
+            if (!name) {
+                alert('Please enter a speaker name');
+                document.getElementById('ytEnrollName').focus();
+                return;
+            }
+            
+            if (audioPlayer.paused) {
+                alert('Please play the audio first, then click Record');
+                return;
+            }
+            
+            // If live processing is active, use its audio context
+            if (ytLiveProcessing && ytAudioContext) {
+                // Capture from existing stream
+                ytEnrollRecording = true;
+                ytEnrollChunks = [];
+                
+                // Get selected duration
+                const durationMs = parseInt(document.querySelector('input[name="ytEnrollDuration"]:checked').value);
+                const durationSec = durationMs / 1000;
+                
+                document.getElementById('ytStartRecordBtn').style.display = 'none';
+                document.getElementById('ytStopRecordBtn').style.display = 'inline-flex';
+                document.getElementById('ytEnrollStatus').textContent = `🔴 Recording ${durationSec}s...`;
+                document.getElementById('ytEnrollStatus').style.color = '#ff4444';
+                
+                // Auto-stop after selected duration
+                ytEnrollTimeout = setTimeout(() => {
+                    stopYtEnrollRecording();
+                }, durationMs);
+                
+                return;
+            }
+            
+            // Create separate audio context for enrollment
+            try {
+                ytEnrollAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+                ytEnrollSource = ytEnrollAudioContext.createMediaElementSource(audioPlayer);
+                ytEnrollProcessor = ytEnrollAudioContext.createScriptProcessor(4096, 1, 1);
+                
+                ytEnrollProcessor.onaudioprocess = (e) => {
+                    const inputData = e.inputBuffer.getChannelData(0);
+                    const outputData = e.outputBuffer.getChannelData(0);
+                    outputData.set(inputData); // Pass through for playback
+                    
+                    if (ytEnrollRecording) {
+                        ytEnrollChunks.push(new Float32Array(inputData));
+                    }
+                };
+                
+                ytEnrollSource.connect(ytEnrollProcessor);
+                ytEnrollProcessor.connect(ytEnrollAudioContext.destination);
+                
+                ytEnrollRecording = true;
+                ytEnrollChunks = [];
+                
+                // Get selected duration
+                const durationMs = parseInt(document.querySelector('input[name="ytEnrollDuration"]:checked').value);
+                const durationSec = durationMs / 1000;
+                
+                document.getElementById('ytStartRecordBtn').style.display = 'none';
+                document.getElementById('ytStopRecordBtn').style.display = 'inline-flex';
+                document.getElementById('ytEnrollStatus').textContent = `🔴 Recording ${durationSec}s...`;
+                document.getElementById('ytEnrollStatus').style.color = '#ff4444';
+                
+                // Auto-stop after selected duration
+                ytEnrollTimeout = setTimeout(() => {
+                    stopYtEnrollRecording();
+                }, durationMs);
+                
+            } catch (error) {
+                console.error('Failed to start enrollment recording:', error);
+                alert('Failed to start recording: ' + error.message);
+            }
+        }
+        
+        async function stopYtEnrollRecording() {
+            if (ytEnrollTimeout) {
+                clearTimeout(ytEnrollTimeout);
+                ytEnrollTimeout = null;
+            }
+            
+            ytEnrollRecording = false;
+            
+            document.getElementById('ytStartRecordBtn').style.display = 'inline-flex';
+            document.getElementById('ytStopRecordBtn').style.display = 'none';
+            document.getElementById('ytEnrollStatus').textContent = 'Processing...';
+            document.getElementById('ytEnrollStatus').style.color = '#ffaa00';
+            
+            // Get chunks from enrollment recording
+            let chunks = ytEnrollChunks;
+            console.log(`Stop recording: ytEnrollChunks has ${ytEnrollChunks.length} chunks`);
+            
+            // If no enrollment chunks captured but live processing was active,
+            // fall back to recent audio (shouldn't happen normally)
+            if (chunks.length === 0 && ytLiveProcessing && ytAudioChunks.length > 0) {
+                console.warn('No enrollment chunks - falling back to live audio chunks');
+                const durationMs = parseInt(document.querySelector('input[name="ytEnrollDuration"]:checked')?.value || 5000);
+                const durationSec = durationMs / 1000;
+                const samplesNeeded = durationSec * (ytAudioContext?.sampleRate || 44100);
+                let totalSamples = 0;
+                chunks = [];
+                for (let i = ytAudioChunks.length - 1; i >= 0 && totalSamples < samplesNeeded; i--) {
+                    chunks.unshift(ytAudioChunks[i]);
+                    totalSamples += ytAudioChunks[i].length;
+                }
+                console.log(`Fallback: got ${chunks.length} chunks, ${totalSamples} samples`);
+            }
+            
+            // Clean up separate enrollment context if used
+            if (ytEnrollProcessor) {
+                ytEnrollProcessor.disconnect();
+                ytEnrollProcessor = null;
+            }
+            if (ytEnrollSource) {
+                ytEnrollSource.disconnect();
+                ytEnrollSource = null;
+            }
+            if (ytEnrollAudioContext) {
+                ytEnrollAudioContext.close();
+                ytEnrollAudioContext = null;
+            }
+            
+            if (chunks.length === 0) {
+                document.getElementById('ytEnrollStatus').textContent = 'No audio captured';
+                document.getElementById('ytEnrollStatus').style.color = '#ff4444';
+                return;
+            }
+            
+            // Merge chunks
+            const totalLength = chunks.reduce((sum, c) => sum + c.length, 0);
+            const merged = new Float32Array(totalLength);
+            let offset = 0;
+            for (const chunk of chunks) {
+                merged.set(chunk, offset);
+                offset += chunk.length;
+            }
+            
+            // Convert to WAV
+            const sampleRate = ytAudioContext?.sampleRate || ytEnrollAudioContext?.sampleRate || 44100;
+            console.log(`Enrollment audio: ${totalLength} samples at ${sampleRate}Hz = ${(totalLength/sampleRate).toFixed(2)}s`);
+            const wavBlob = float32ArrayToWav(merged, sampleRate);
+            
+            // Enroll speaker
+            const name = document.getElementById('ytEnrollName').value.trim();
+            
+            try {
+                const formData = new FormData();
+                formData.append('audio', wavBlob, 'enrollment.wav');
+                formData.append('name', name);
+                formData.append('noise_level', '0'); // YouTube audio is already clean
+                
+                const res = await fetch('/api/enroll-live', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await res.json();
+                
+                if (data.success) {
+                    document.getElementById('ytEnrollStatus').textContent = `✅ Enrolled: ${name}`;
+                    document.getElementById('ytEnrollStatus').style.color = '#00ff88';
+                    document.getElementById('ytEnrollName').value = '';
+                    
+                    // Refresh status to show new speaker
+                    checkStatus();
+                } else {
+                    document.getElementById('ytEnrollStatus').textContent = `❌ ${data.error}`;
+                    document.getElementById('ytEnrollStatus').style.color = '#ff4444';
+                }
+            } catch (error) {
+                document.getElementById('ytEnrollStatus').textContent = `❌ ${error.message}`;
+                document.getElementById('ytEnrollStatus').style.color = '#ff4444';
+            }
+            
+            ytEnrollChunks = [];
+        }
+        
+        async function processYtAudioChunk(force = false) {
+            if (ytAudioChunks.length === 0) return;
+            
+            const audioPlayer = document.getElementById('youtubeAudioPlayer');
+            const currentTime = audioPlayer.currentTime;
+            
+            // Only process if we have enough audio or forced
+            if (!force && currentTime - ytChunkStartTime < YT_CHUNK_DURATION) return;
+            
+            // Merge all chunks into one buffer
+            const totalLength = ytAudioChunks.reduce((sum, chunk) => sum + chunk.length, 0);
+            if (totalLength < 1600) { // Less than 0.1 seconds at 16kHz
+                ytAudioChunks = [];
+                ytChunkStartTime = currentTime;
+                return;
+            }
+            
+            const mergedBuffer = new Float32Array(totalLength);
+            let offset = 0;
+            for (const chunk of ytAudioChunks) {
+                mergedBuffer.set(chunk, offset);
+                offset += chunk.length;
+            }
+            
+            // Record the timestamp for this chunk
+            const chunkTime = ytChunkStartTime;
+            
+            // Clear chunks for next batch
+            ytAudioChunks = [];
+            ytChunkStartTime = currentTime;
+            
+            // Convert to WAV and send to server
+            try {
+                const sampleRate = ytAudioContext ? ytAudioContext.sampleRate : 44100;
+                const wavBlob = float32ArrayToWav(mergedBuffer, sampleRate);
+                
+                // Send for transcription and speaker identification
+                const formData = new FormData();
+                formData.append('audio', wavBlob, 'chunk.wav');
+                formData.append('noise_level', document.getElementById('noiseLevel')?.value || '50');
+                
+                // Transcribe
+                const transcribeRes = await fetch('/api/transcribe', {
+                    method: 'POST',
+                    body: formData
+                });
+                const transcribeData = await transcribeRes.json();
+                
+                let text = '';
+                if (transcribeData.success && transcribeData.text) {
+                    text = transcribeData.text;
+                }
+                
+                // Only proceed if we got some text
+                if (!text || text.trim() === '') {
+                    console.log('No speech detected in chunk');
+                    return;
+                }
+                
+                // Identify speaker
+                let speaker = 'Unknown';
+                const identifyFormData = new FormData();
+                identifyFormData.append('audio', wavBlob, 'chunk.wav');
+                identifyFormData.append('threshold', document.getElementById('threshold')?.value || '0.6');
+                identifyFormData.append('noise_level', '0'); // Already processed
+                
+                const identifyRes = await fetch('/api/identify-live', {
+                    method: 'POST',
+                    body: identifyFormData
+                });
+                const identifyData = await identifyRes.json();
+                
+                if (identifyData.success && identifyData.identified) {
+                    speaker = identifyData.identified;
+                    console.log(`Speaker identified: ${speaker} (similarity: ${identifyData.similarity})`);
+                }
+                
+                // Track speaker counts
+                ytSpeakerCounts[speaker] = (ytSpeakerCounts[speaker] || 0) + 1;
+                
+                // Add to transcript
+                const timeStr = formatTime(chunkTime);
+                const newLine = {
+                    time: timeStr,
+                    time_seconds: chunkTime,
+                    speaker: speaker,
+                    text: text
+                };
+                
+                youtubeTranscriptLines.push(newLine);
+                updateYoutubeTranscript(youtubeTranscriptLines);
+                
+            } catch (error) {
+                console.error('Error processing audio chunk:', error);
+            }
+        }
+        
+        function float32ArrayToWav(samples, sampleRate) {
+            // Resample to 16kHz if needed
+            let resampled = samples;
+            if (sampleRate !== 16000) {
+                const ratio = 16000 / sampleRate;
+                const newLength = Math.round(samples.length * ratio);
+                resampled = new Float32Array(newLength);
+                for (let i = 0; i < newLength; i++) {
+                    const srcIndex = i / ratio;
+                    const srcIndexFloor = Math.floor(srcIndex);
+                    const srcIndexCeil = Math.min(srcIndexFloor + 1, samples.length - 1);
+                    const t = srcIndex - srcIndexFloor;
+                    resampled[i] = samples[srcIndexFloor] * (1 - t) + samples[srcIndexCeil] * t;
+                }
+                sampleRate = 16000;
+            }
+            
+            // Convert to 16-bit PCM
+            const buffer = new ArrayBuffer(44 + resampled.length * 2);
+            const view = new DataView(buffer);
+            
+            // WAV header
+            const writeString = (offset, string) => {
+                for (let i = 0; i < string.length; i++) {
+                    view.setUint8(offset + i, string.charCodeAt(i));
+                }
+            };
+            
+            writeString(0, 'RIFF');
+            view.setUint32(4, 36 + resampled.length * 2, true);
+            writeString(8, 'WAVE');
+            writeString(12, 'fmt ');
+            view.setUint32(16, 16, true); // Subchunk1Size
+            view.setUint16(20, 1, true);  // AudioFormat (PCM)
+            view.setUint16(22, 1, true);  // NumChannels (mono)
+            view.setUint32(24, sampleRate, true); // SampleRate
+            view.setUint32(28, sampleRate * 2, true); // ByteRate
+            view.setUint16(32, 2, true);  // BlockAlign
+            view.setUint16(34, 16, true); // BitsPerSample
+            writeString(36, 'data');
+            view.setUint32(40, resampled.length * 2, true);
+            
+            // Write samples
+            let offset = 44;
+            for (let i = 0; i < resampled.length; i++) {
+                const s = Math.max(-1, Math.min(1, resampled[i]));
+                view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+                offset += 2;
+            }
+            
+            return new Blob([buffer], { type: 'audio/wav' });
+        }
+        
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+        
+        function updateYtSpeakerSummary() {
+            const speakers = Object.entries(ytSpeakerCounts)
+                .map(([name, count]) => ({ name, segments: count }))
+                .sort((a, b) => b.segments - a.segments);
+            
+            showYoutubeSpeakers(speakers);
+        }
+        
+        function highlightCurrentTranscriptLine(currentTime) {
+            const container = document.getElementById('youtubeTranscript');
+            const lines = container.querySelectorAll('.transcript-line');
+            const autoScrollCheckbox = document.getElementById('ytAutoScroll');
+            
+            lines.forEach((line, index) => {
+                const lineTime = parseFloat(line.dataset.time) || 0;
+                const nextLine = lines[index + 1];
+                const nextTime = nextLine ? parseFloat(nextLine.dataset.time) || Infinity : Infinity;
+                
+                if (currentTime >= lineTime && currentTime < nextTime) {
+                    line.style.background = 'rgba(0, 212, 255, 0.2)';
+                    line.style.borderLeft = '3px solid #00d4ff';
+                    line.style.paddingLeft = '10px';
+                    
+                    // Only scroll if auto-scroll is enabled
+                    if (autoScrollCheckbox && autoScrollCheckbox.checked) {
+                        // Scroll within container only, not the whole page
+                        const containerRect = container.getBoundingClientRect();
+                        const lineRect = line.getBoundingClientRect();
+                        const scrollTop = container.scrollTop + (lineRect.top - containerRect.top) - (containerRect.height / 2) + (lineRect.height / 2);
+                        container.scrollTo({ top: scrollTop, behavior: 'smooth' });
+                    }
+                } else {
+                    line.style.background = 'transparent';
+                    line.style.borderLeft = 'none';
+                    line.style.paddingLeft = '0';
+                }
+            });
+        }
+        
+        // Detect manual scroll to disable auto-scroll
+        (function() {
+            let lastScrollTop = 0;
+            let userScrolled = false;
+            
+            document.addEventListener('DOMContentLoaded', () => {
+                const container = document.getElementById('youtubeTranscript');
+                const autoScrollCheckbox = document.getElementById('ytAutoScroll');
+                
+                if (container && autoScrollCheckbox) {
+                    container.addEventListener('scroll', () => {
+                        const currentScrollTop = container.scrollTop;
+                        
+                        // If user scrolled up, disable auto-scroll
+                        if (currentScrollTop < lastScrollTop - 50) {
+                            autoScrollCheckbox.checked = false;
+                        }
+                        
+                        lastScrollTop = currentScrollTop;
+                    });
+                }
+            });
+        })();
+        
+        function seekToTime(timeInSeconds) {
+            const audioPlayer = document.getElementById('youtubeAudioPlayer');
+            if (audioPlayer && audioPlayer.src) {
+                audioPlayer.currentTime = timeInSeconds;
+                audioPlayer.play();
+            }
+        }
+        
+        function updateYoutubeTranscript(transcript) {
+            if (!transcript || transcript.length === 0) return;
+            
+            const container = document.getElementById('youtubeTranscript');
+            let html = '';
+            
+            for (const line of transcript) {
+                const speaker = line.speaker || 'Unknown';
+                const text = line.text || '';
+                const time = line.time || '';
+                const timeSeconds = line.time_seconds || 0;
+                
+                const isUnknown = speaker === 'Unknown';
+                const speakerColor = isUnknown ? '#888' : '#00d4ff';
+                
+                html += `<div class="transcript-line" data-time="${timeSeconds}" onclick="seekToTime(${timeSeconds})" style="margin-bottom: 8px; cursor: pointer; padding: 5px; border-radius: 5px; transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="if(!this.style.borderLeft) this.style.background='transparent'">`;
+                if (time) {
+                    html += `<span style="color: #666; font-size: 0.8em;">[${time}]</span> `;
+                }
+                html += `<span style="color: ${speakerColor}; font-weight: bold;">[${speaker}]</span> `;
+                html += `<span style="color: #fff;">${text}</span>`;
+                html += `</div>`;
+            }
+            
+            container.innerHTML = html || '<div style="color: #666;">No transcript available</div>';
+        }
+        
+        function showYoutubeSpeakers(speakers) {
+            if (!speakers || speakers.length === 0) {
+                document.getElementById('youtubeSpeakerResults').style.display = 'none';
+                return;
+            }
+            
+            const container = document.getElementById('ytSpeakerList');
+            container.innerHTML = speakers.map(s => `
+                <div style="background: rgba(0,212,255,0.1); border-radius: 10px; padding: 10px 15px; border: 1px solid rgba(0,212,255,0.3);">
+                    <div style="color: #00d4ff; font-weight: bold;">${s.name}</div>
+                    <div style="color: #888; font-size: 0.85em;">${s.segments} segments</div>
+                </div>
+            `).join('');
+            document.getElementById('youtubeSpeakerResults').style.display = 'block';
+        }
+        
+        function copyYoutubeTranscript() {
+            const text = youtubeTranscriptLines.map(l => 
+                `${l.time ? '[' + l.time + '] ' : ''}[${l.speaker}] ${l.text}`
+            ).join('\n');
+            
+            navigator.clipboard.writeText(text).then(() => {
+                alert('Transcript copied to clipboard!');
+            });
+        }
+        
+        function clearYoutubeTranscript() {
+            youtubeTranscriptLines = [];
+            ytSpeakerCounts = {};
+            document.getElementById('youtubeTranscript').innerHTML = '<div style="color: #666;">Start live processing and play the audio to see transcript here...</div>';
+            document.getElementById('youtubeSpeakerResults').style.display = 'none';
+        }
+        
+        // =============================================
         // Original Functions
         // =============================================
         document.addEventListener('DOMContentLoaded', () => {
@@ -1382,6 +2595,41 @@
             deviceInfo.textContent = data.device || '-';
             speakerCount.textContent = data.speaker_count || 0;
             
+            // Update Settings tab model info
+            const speakerModelEl = document.getElementById('speakerModelName');
+            const speakerModelDescEl = document.getElementById('speakerModelDesc');
+            const transcribeModelEl = document.getElementById('transcribeModelName');
+            const transcribeModelDescEl = document.getElementById('transcribeModelDesc');
+            const deviceNameEl = document.getElementById('deviceName');
+            
+            if (speakerModelEl) {
+                const modelName = data.speaker_model || 'Not loaded';
+                speakerModelEl.textContent = modelName;
+                if (modelName === 'ECAPA-TDNN') {
+                    speakerModelDescEl.textContent = 'speechbrain/spkrec-ecapa-voxceleb - High-accuracy speaker verification (~0.8% EER)';
+                } else {
+                    speakerModelDescEl.textContent = '';
+                }
+            }
+            
+            if (transcribeModelEl) {
+                if (data.parakeet_loaded) {
+                    transcribeModelEl.textContent = 'Parakeet-MLX TDT';
+                    transcribeModelDescEl.textContent = 'mlx-community/parakeet-tdt-0.6b-v3 - Apple Silicon optimized ASR (TDT)';
+                } else if (data.parakeet_available) {
+                    transcribeModelEl.textContent = 'Parakeet-MLX (loading...)';
+                    transcribeModelDescEl.textContent = 'Model will load on first transcription';
+                } else {
+                    transcribeModelEl.textContent = 'Not available';
+                    transcribeModelDescEl.textContent = 'Install with: pip install parakeet-mlx';
+                }
+            }
+            
+            if (deviceNameEl) {
+                const deviceMap = {'cuda': 'NVIDIA GPU (CUDA)', 'mps': 'Apple Silicon GPU (MPS)', 'cpu': 'CPU'};
+                deviceNameEl.textContent = deviceMap[data.device] || data.device;
+            }
+            
             updateSpeakersList(data.speakers_enrolled || []);
             updateSettingsSpeakerList(data.speakers_enrolled || []);
         }
@@ -1394,12 +2642,16 @@
                 return;
             }
             
-            container.innerHTML = speakers.map(name => `
+            container.innerHTML = speakers.map(speaker => {
+                const name = speaker.name || speaker;
+                const hash = speaker.hash || '';
+                return `
                 <div class="speaker-tag">
                     <span>${name}</span>
+                    ${hash ? `<span style="color: #666; font-size: 0.75em; font-family: monospace; margin-left: 4px;">[${hash}]</span>` : ''}
                     <button class="delete-btn" onclick="deleteSpeaker('${name}')">&times;</button>
                 </div>
-            `).join('');
+            `}).join('');
         }
         
         async function initModel() {
