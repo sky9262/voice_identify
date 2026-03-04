@@ -114,7 +114,12 @@ youtube_jobs = {}  # job_id -> job status/results
 def embedding_to_hash(embedding, length=8):
     """Convert embedding to short hex hash for human-readable identification."""
     import hashlib
-    emb_bytes = embedding.astype(np.float32).tobytes()
+    # Handle both numpy arrays and PyTorch tensors
+    if hasattr(embedding, 'cpu'):  # PyTorch tensor
+        emb_np = embedding.cpu().numpy()
+    else:
+        emb_np = embedding
+    emb_bytes = emb_np.astype(np.float32).tobytes()
     full_hash = hashlib.sha256(emb_bytes).hexdigest()
     return full_hash[:length].upper()
 
@@ -541,11 +546,16 @@ def speakers_debug():
     """Get detailed debug info about enrolled speakers including embedding hashes."""
     debug_info = {}
     for name, emb in speaker_memory.items():
+        # Handle both numpy arrays and PyTorch tensors
+        if hasattr(emb, 'cpu'):
+            emb_np = emb.cpu().numpy()
+        else:
+            emb_np = emb
         debug_info[name] = {
             'hash': embedding_to_hash(emb),
-            'embedding_size': emb.shape[0] if hasattr(emb, 'shape') else len(emb),
-            'norm': float(np.linalg.norm(emb)),
-            'sample': [round(float(x), 4) for x in emb[:5]]  # First 5 values
+            'embedding_size': emb_np.shape[0] if hasattr(emb_np, 'shape') else len(emb_np),
+            'norm': float(np.linalg.norm(emb_np)),
+            'sample': [round(float(x), 4) for x in emb_np[:5]]  # First 5 values
         }
     
     return jsonify({
