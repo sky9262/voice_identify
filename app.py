@@ -8,8 +8,18 @@ Using SpeechBrain ECAPA-TDNN for high-accuracy speaker verification.
 import os
 import io
 import re
+import json
 import uuid
 import threading
+
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    print("Loaded .env file")
+except ImportError:
+    print("Warning: python-dotenv not installed, using system environment only")
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -77,6 +87,33 @@ except ImportError as e:
 except Exception as e:
     print(f"Warning: parakeet-mlx error: {e}")
 
+# Voxtral-MLX (Mistral ASR via mlx-audio)
+VOXTRAL_AVAILABLE = False
+voxtral_model = None
+current_voxtral_model_name = None
+try:
+    from mlx_audio.stt.utils import load_model as voxtral_load_model
+    from mlx_audio.stt.generate import generate_transcription as voxtral_generate
+    VOXTRAL_AVAILABLE = True
+    print("Voxtral-MLX (mlx-audio) available")
+except ImportError as e:
+    print(f"Warning: mlx-audio import failed: {e}")
+except Exception as e:
+    print(f"Warning: mlx-audio error: {e}")
+
+# Pyannote Speaker Segmentation (for accurate speaker change detection)
+PYANNOTE_AVAILABLE = False
+pyannote_segmentation = None
+try:
+    from pyannote.audio import Model as PyannoteModel
+    from pyannote.audio.pipelines.utils import get_model
+    PYANNOTE_AVAILABLE = True
+    print("Pyannote segmentation available")
+except ImportError as e:
+    print(f"Warning: pyannote.audio import failed: {e}")
+except Exception as e:
+    print(f"Warning: pyannote.audio error: {e}")
+
 # =============================================================================
 # Flask App Setup
 # =============================================================================
@@ -88,7 +125,7 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 # Create uploads folder if it doesn't exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-ALLOWED_EXTENSIONS = {'wav', 'mp3', 'flac', 'm4a', 'ogg'}
+ALLOWED_EXTENSIONS = {'wav', 'mp3', 'flac', 'm4a', 'ogg', 'webm'}
 
 # =============================================================================
 # Global Model & Speaker Memory
@@ -115,9 +152,9 @@ processing_lock = threading.Lock()  # Prevent concurrent GPU access
 # Persistence file for enrolled speakers
 SPEAKER_MEMORY_FILE = 'enrolled_speakers.pkl'
 
-# Audio accumulation for stable speaker ID (3+ seconds)
+# Audio accumulation for stable speaker ID (2+ seconds - reduced for faster detection)
 accumulated_audio = []  # List of audio chunks
-ACCUM_DURATION_FOR_SPEAKER_ID = 3.0  # seconds
+ACCUM_DURATION_FOR_SPEAKER_ID = 2.0  # seconds (was 3.0, reduced for faster speaker change)
 
 # Chunk history for retroactive split detection (hybrid approach)
 chunk_history = []  # List of {embedding, text, index}
@@ -156,6 +193,55 @@ def load_speaker_memory():
 
 # Load saved speakers on startup
 load_speaker_memory()
+
+# Adaptive speaker profile settings
+ADAPTIVE_UPDATE_THRESHOLD = 0.60  # Min similarity to trigger update
+ADAPTIVE_LEARNING_RATE = 0.1  # How much to weight new embedding (0.1 = 10% new, 90% old)
+adaptive_update_counter = {}  # Track updates per speaker
+
+def update_speaker_profile(speaker_name, new_embedding):
+    """Update enrolled speaker embedding with new sample using exponential moving average.
+    
+    This allows speaker profiles to adapt and improve over time.
+    """
+    global speaker_memory, adaptive_update_counter
+    
+    if speaker_name not in speaker_memory:
+        return False
+    
+    # Convert to numpy
+    if hasattr(new_embedding, 'cpu'):
+        new_emb = new_embedding.cpu().numpy().flatten()
+    else:
+        new_emb = np.array(new_embedding).flatten()
+    
+    old_emb = speaker_memory[speaker_name]
+    if hasattr(old_emb, 'cpu'):
+        old_emb = old_emb.cpu().numpy().flatten()
+    else:
+        old_emb = np.array(old_emb).flatten()
+    
+    # Exponential moving average update
+    updated_emb = (1 - ADAPTIVE_LEARNING_RATE) * old_emb + ADAPTIVE_LEARNING_RATE * new_emb
+    
+    # Normalize the embedding
+    updated_emb = updated_emb / (np.linalg.norm(updated_emb) + 1e-8)
+    
+    # Store back
+    speaker_memory[speaker_name] = updated_emb
+    
+    # Track update count
+    adaptive_update_counter[speaker_name] = adaptive_update_counter.get(speaker_name, 0) + 1
+    count = adaptive_update_counter[speaker_name]
+    
+    # Save to disk every 10 updates
+    if count % 10 == 0:
+        save_speaker_memory()
+        print(f"Adaptive update: '{speaker_name}' profile saved (update #{count})")
+    else:
+        print(f"Adaptive update: '{speaker_name}' profile updated (update #{count})")
+    
+    return True
 
 # Session-based speaker clustering for stable IDs
 session_speakers = {}  # hash -> averaged_embedding
@@ -325,6 +411,56 @@ def init_model():
         return False
 
 
+def init_pyannote_segmentation(hf_token=None):
+    """Initialize Pyannote segmentation model for speaker change detection.
+    
+    Requires HuggingFace token for gated model access.
+    Set HF_TOKEN environment variable or pass token directly.
+    """
+    global pyannote_segmentation, PYANNOTE_AVAILABLE
+    
+    if not PYANNOTE_AVAILABLE:
+        print("Pyannote not available")
+        return False
+    
+    if pyannote_segmentation is not None:
+        return True
+    
+    # Get token from environment or parameter
+    token = hf_token or os.environ.get('huggingface_token') or os.environ.get('HF_TOKEN') or os.environ.get('HUGGINGFACE_TOKEN')
+    
+    if not token:
+        print("WARNING: No HuggingFace token found for Pyannote segmentation.")
+        print("Set huggingface_token in .env file or HF_TOKEN environment variable")
+        return False
+    
+    try:
+        print("Loading Pyannote segmentation-3.0 model...")
+        print(f"Using HuggingFace token: {token[:10]}...")
+        pyannote_segmentation = PyannoteModel.from_pretrained(
+            "pyannote/segmentation-3.0",
+            token=token  # Use 'token' not 'use_auth_token'
+        )
+        # Move to appropriate device
+        if device == "mps":
+            # Pyannote may have MPS issues, use CPU
+            pyannote_segmentation = pyannote_segmentation.to("cpu")
+            print("Pyannote segmentation loaded on CPU (MPS fallback)")
+        else:
+            pyannote_segmentation = pyannote_segmentation.to(device)
+            print(f"Pyannote segmentation loaded on {device}")
+        
+        print("Pyannote segmentation-3.0 loaded successfully!")
+        print("This enables accurate speaker change detection.")
+        return True
+        
+    except Exception as e:
+        print(f"Failed to load Pyannote segmentation: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
 def init_parakeet():
     """Initialize Parakeet-MLX model."""
     global parakeet_model, PARAKEET_AVAILABLE, current_parakeet_model_name
@@ -350,7 +486,7 @@ def init_parakeet():
 
 def switch_parakeet_model(model_name):
     """Switch to a different Parakeet model."""
-    global parakeet_model, PARAKEET_AVAILABLE, current_parakeet_model_name
+    global parakeet_model, PARAKEET_AVAILABLE, current_parakeet_model_name, voxtral_model, current_voxtral_model_name
     
     print(f"switch_parakeet_model called with: {model_name}")  # Debug
     print(f"Current model before switch: {current_parakeet_model_name}")  # Debug
@@ -360,8 +496,10 @@ def switch_parakeet_model(model_name):
     
     try:
         print(f"Switching to Parakeet model: {model_name}...")
-        # Unload current model
+        # Unload current models
         parakeet_model = None
+        voxtral_model = None
+        current_voxtral_model_name = None
         
         # Load new model
         parakeet_model = parakeet_from_pretrained(model_name)
@@ -376,8 +514,37 @@ def switch_parakeet_model(model_name):
         return False, str(e)
 
 
+def switch_voxtral_model(model_name):
+    """Switch to a Voxtral model."""
+    global voxtral_model, current_voxtral_model_name, parakeet_model, current_parakeet_model_name
+    
+    if not VOXTRAL_AVAILABLE:
+        return False, "Voxtral (mlx-audio) not available. Install with: pip install mlx-audio"
+    
+    try:
+        print(f"Switching to Voxtral model: {model_name}...")
+        # Unload other models
+        parakeet_model = None
+        voxtral_model = None
+        
+        # Load Voxtral model
+        voxtral_model = voxtral_load_model(model_name)
+        current_voxtral_model_name = model_name
+        current_parakeet_model_name = None
+        print(f"Voxtral model switched to {model_name} successfully!")
+        return True, None
+    except Exception as e:
+        print(f"Failed to switch Voxtral model: {e}")
+        import traceback
+        traceback.print_exc()
+        return False, str(e)
+
+
 def transcribe_with_parakeet(audio_path):
-    """Transcribe audio using Parakeet-MLX (Apple Silicon optimized)."""
+    """Transcribe audio using Parakeet-MLX (Apple Silicon optimized).
+    
+    Includes confidence filtering to prevent phantom transcriptions (hallucinations).
+    """
     global parakeet_model
     
     if not PARAKEET_AVAILABLE:
@@ -388,6 +555,9 @@ def transcribe_with_parakeet(audio_path):
         print("Parakeet model not loaded - please select and initialize a model in Settings")
         return None
     
+    # Minimum confidence threshold to filter hallucinations
+    MIN_CONFIDENCE = 0.80
+    
     try:
         # Use parakeet-mlx transcribe
         print(f"Transcribing: {audio_path}")
@@ -397,6 +567,51 @@ def transcribe_with_parakeet(audio_path):
         # Handle different return formats
         if result is None:
             return None
+        
+        # Check for AlignedResult with confidence filtering
+        if hasattr(result, 'sentences') and hasattr(result, 'text'):
+            text = result.text.strip() if result.text else ''
+            if not text:
+                return None
+            
+            # Filter out <unk> tokens (model couldn't understand audio)
+            if '<unk>' in text:
+                # Remove all <unk> tokens
+                text = text.replace('<unk>', '').strip()
+                # Collapse multiple spaces
+                import re
+                text = re.sub(r'\s+', ' ', text).strip()
+                print(f"  Filtered <unk> tokens, remaining: '{text}'")
+                if not text:
+                    return None
+            
+            # Calculate average confidence from sentences/tokens
+            total_confidence = 0
+            token_count = 0
+            for sentence in result.sentences:
+                if hasattr(sentence, 'tokens'):
+                    for token in sentence.tokens:
+                        if hasattr(token, 'confidence'):
+                            total_confidence += token.confidence
+                            token_count += 1
+            
+            if token_count > 0:
+                avg_confidence = total_confidence / token_count
+                print(f"  Confidence: {avg_confidence:.3f} ({token_count} tokens)")
+                
+                # Filter low-confidence transcriptions (likely hallucinations)
+                if avg_confidence < MIN_CONFIDENCE:
+                    print(f"  FILTERED: confidence {avg_confidence:.3f} < {MIN_CONFIDENCE}")
+                    return None
+                
+                # Also filter very short single-word transcriptions that are likely noise
+                word_count = len(text.split())
+                if word_count == 1 and len(text) <= 4 and avg_confidence < 0.90:
+                    print(f"  FILTERED: short word '{text}' with confidence {avg_confidence:.3f}")
+                    return None
+            
+            return text
+        
         elif isinstance(result, str):
             return result.strip() if result.strip() else None
         elif isinstance(result, dict) and 'text' in result:
@@ -423,6 +638,63 @@ def transcribe_with_parakeet(audio_path):
         print(f"Transcription error: {e}")
         traceback.print_exc()
         return None
+
+
+def transcribe_with_voxtral(audio_path):
+    """Transcribe audio using Voxtral (Mistral ASR via mlx-audio)."""
+    global voxtral_model
+    
+    if not VOXTRAL_AVAILABLE:
+        print("Voxtral not available")
+        return None
+    
+    if voxtral_model is None:
+        print("Voxtral model not loaded - please select and initialize a model in Settings")
+        return None
+    
+    try:
+        print(f"Transcribing with Voxtral: {audio_path}")
+        
+        # Use mlx-audio generate_transcription
+        result = voxtral_generate(
+            voxtral_model,    # model
+            audio_path,       # audio
+            "transcript",     # output_path
+            "txt",            # format
+            False             # verbose
+        )
+        
+        print(f"Voxtral result: {result}")
+        
+        # Extract text from result
+        if result is None:
+            return None
+        elif hasattr(result, 'text'):
+            return result.text.strip() if result.text else None
+        elif hasattr(result, 'segments') and result.segments:
+            texts = [seg.get('text', '') for seg in result.segments]
+            return ' '.join(texts).strip() if texts else None
+        elif isinstance(result, str):
+            return result.strip() if result.strip() else None
+        else:
+            return str(result).strip() if str(result).strip() else None
+            
+    except Exception as e:
+        import traceback
+        print(f"Voxtral transcription error: {e}")
+        traceback.print_exc()
+        return None
+
+
+def transcribe_audio(audio_path):
+    """Unified transcription - uses whichever model is loaded."""
+    # Try Parakeet first (fastest)
+    if parakeet_model is not None:
+        return transcribe_with_parakeet(audio_path)
+    # Try Voxtral
+    if voxtral_model is not None:
+        return transcribe_with_voxtral(audio_path)
+    return None
 
 
 @torch.no_grad()
@@ -457,6 +729,162 @@ def cosine_sim(e1, e2):
     return float(torch.nn.functional.cosine_similarity(e1, e2).item())
 
 
+@torch.no_grad()
+def detect_speaker_change_pyannote(wav, sr=16000):
+    """Detect speaker change probability using Pyannote segmentation.
+    
+    Returns:
+        dict with:
+            - has_change: bool, whether speaker change detected
+            - change_prob: float, max change probability (0-1)
+            - change_frames: list of frame indices with high change probability
+    """
+    if pyannote_segmentation is None:
+        return {'has_change': False, 'change_prob': 0.0, 'change_frames': [], 'available': False}
+    
+    try:
+        # Ensure audio is torch tensor
+        if isinstance(wav, np.ndarray):
+            wav_tensor = torch.tensor(wav).float()
+        else:
+            wav_tensor = wav.float()
+        
+        # Add batch and channel dimension: (batch, channel, time)
+        if wav_tensor.dim() == 1:
+            wav_tensor = wav_tensor.unsqueeze(0).unsqueeze(0)
+        elif wav_tensor.dim() == 2:
+            wav_tensor = wav_tensor.unsqueeze(0)
+        
+        # Move to CPU for Pyannote (safer)
+        wav_tensor = wav_tensor.to("cpu")
+        
+        # Get segmentation output
+        # Output shape: (batch, num_frames, num_classes)
+        # Classes: [speech, non-speech, speaker_change] or similar
+        output = pyannote_segmentation(wav_tensor)
+        
+        # Get speaker change probabilities
+        # Pyannote segmentation-3.0 outputs frame-level speaker probabilities
+        # We detect change by looking at probability transitions
+        probs = output.squeeze().cpu().numpy()  # (num_frames, num_classes)
+        
+        # For segmentation model, detect change by looking at speaker probability shifts
+        if len(probs.shape) == 2:
+            # Multi-speaker probabilities - detect when dominant speaker changes
+            num_frames, num_speakers = probs.shape
+            
+            # Find dominant speaker per frame
+            dominant = np.argmax(probs, axis=1)
+            
+            # Detect changes in dominant speaker
+            changes = np.where(np.diff(dominant) != 0)[0]
+            
+            if len(changes) > 0:
+                # Get confidence of change (difference in speaker probs)
+                change_confidences = []
+                for change_frame in changes:
+                    if change_frame + 1 < num_frames:
+                        # Difference in max probability before/after
+                        conf = abs(probs[change_frame].max() - probs[change_frame + 1].max())
+                        change_confidences.append(conf)
+                
+                max_prob = max(change_confidences) if change_confidences else 0.0
+                return {
+                    'has_change': True,
+                    'change_prob': float(max_prob),
+                    'change_frames': changes.tolist(),
+                    'available': True
+                }
+        
+        return {'has_change': False, 'change_prob': 0.0, 'change_frames': [], 'available': True}
+        
+    except Exception as e:
+        print(f"Pyannote speaker change detection error: {e}")
+        import traceback
+        traceback.print_exc()
+        return {'has_change': False, 'change_prob': 0.0, 'change_frames': [], 'available': False, 'error': str(e)}
+
+
+def hybrid_speaker_change_detection(wav, sr, current_embedding, prev_embedding, ecapa_threshold=0.5):
+    """Hybrid speaker change detection using Pyannote + ECAPA-TDNN.
+    
+    Combines:
+    1. Pyannote segmentation for frame-level change detection
+    2. ECAPA-TDNN cosine similarity for speaker verification
+    
+    Returns:
+        dict with:
+            - speaker_changed: bool
+            - confidence: float (0-1)
+            - method: str ('pyannote', 'ecapa', 'both', 'none')
+            - ecapa_sim: float, cosine similarity
+            - pyannote_prob: float, change probability
+    """
+    result = {
+        'speaker_changed': False,
+        'confidence': 0.0,
+        'method': 'none',
+        'ecapa_sim': 1.0,
+        'pyannote_prob': 0.0
+    }
+    
+    # 1. ECAPA-TDNN similarity check
+    ecapa_changed = False
+    ecapa_sim = 1.0
+    if prev_embedding is not None and current_embedding is not None:
+        # Handle numpy arrays
+        if isinstance(current_embedding, np.ndarray):
+            current_emb = torch.tensor(current_embedding).float()
+        else:
+            current_emb = current_embedding
+        if isinstance(prev_embedding, np.ndarray):
+            prev_emb = torch.tensor(prev_embedding).float()
+        else:
+            prev_emb = prev_embedding
+        
+        ecapa_sim = cosine_sim(current_emb, prev_emb)
+        result['ecapa_sim'] = ecapa_sim
+        ecapa_changed = ecapa_sim < ecapa_threshold
+    
+    # 2. Pyannote change detection
+    pyannote_result = detect_speaker_change_pyannote(wav, sr)
+    pyannote_changed = pyannote_result.get('has_change', False)
+    pyannote_prob = pyannote_result.get('change_prob', 0.0)
+    result['pyannote_prob'] = pyannote_prob
+    pyannote_available = pyannote_result.get('available', False)
+    
+    # 3. Hybrid decision
+    if pyannote_available:
+        # Both methods available - require agreement or high confidence
+        if pyannote_changed and ecapa_changed:
+            # Both agree - high confidence change
+            result['speaker_changed'] = True
+            result['confidence'] = (1 - ecapa_sim + pyannote_prob) / 2
+            result['method'] = 'both'
+        elif pyannote_changed and pyannote_prob > 0.7:
+            # Strong Pyannote signal alone
+            result['speaker_changed'] = True
+            result['confidence'] = pyannote_prob
+            result['method'] = 'pyannote'
+        elif ecapa_changed and ecapa_sim < 0.3:
+            # Strong ECAPA signal alone (very low similarity)
+            result['speaker_changed'] = True
+            result['confidence'] = 1 - ecapa_sim
+            result['method'] = 'ecapa'
+        else:
+            # No strong signal
+            result['speaker_changed'] = False
+            result['confidence'] = max(1 - ecapa_sim, pyannote_prob) if ecapa_changed or pyannote_changed else 0.0
+    else:
+        # Pyannote not available - fall back to ECAPA only
+        if ecapa_changed:
+            result['speaker_changed'] = True
+            result['confidence'] = 1 - ecapa_sim
+            result['method'] = 'ecapa'
+    
+    return result
+
+
 def load_audio(filepath, target_sr=16000):
     """Load audio file and convert to mono."""
     wav, sr = librosa.load(filepath, sr=target_sr, mono=True)
@@ -475,7 +903,7 @@ def index():
 
 @app.route('/api/switch-parakeet-model', methods=['POST'])
 def api_switch_parakeet_model():
-    """Switch to a different Parakeet model."""
+    """Switch to a different ASR model (Parakeet or Voxtral)."""
     data = request.get_json()
     model_name = data.get('model') if data else None
     print(f"API received model switch request: {model_name}")  # Debug
@@ -483,18 +911,31 @@ def api_switch_parakeet_model():
     if not model_name:
         return jsonify({'success': False, 'error': 'No model specified'}), 400
     
-    # Valid models
-    valid_models = [
+    # Valid Parakeet models
+    parakeet_models = [
         'mlx-community/parakeet-tdt-1.1b',
         'mlx-community/parakeet-tdt-0.6b-v3',
         'mlx-community/parakeet-ctc-1.1b',
+        'mlx-community/parakeet-ctc-0.6b',
         'mlx-community/parakeet-tdt-0.6b-v2'
     ]
     
-    if model_name not in valid_models:
-        return jsonify({'success': False, 'error': f'Invalid model. Valid options: {valid_models}'}), 400
+    # Valid Voxtral models
+    voxtral_models = [
+        'mlx-community/Voxtral-Mini-3B-2507-bf16',
+        'mlx-community/Voxtral-Mini-4B-Realtime-2602-4bit'
+    ]
     
-    success, error = switch_parakeet_model(model_name)
+    all_valid_models = parakeet_models + voxtral_models
+    
+    if model_name not in all_valid_models:
+        return jsonify({'success': False, 'error': f'Invalid model. Valid options: {all_valid_models}'}), 400
+    
+    # Route to appropriate model loader
+    if model_name in parakeet_models:
+        success, error = switch_parakeet_model(model_name)
+    else:
+        success, error = switch_voxtral_model(model_name)
     
     if success:
         return jsonify({
@@ -517,12 +958,26 @@ def status():
             'hash': embedding_to_hash(emb)
         })
     
+    # Determine active model name
+    active_model = None
+    if parakeet_model is not None:
+        active_model = current_parakeet_model_name
+    elif voxtral_model is not None:
+        active_model = current_voxtral_model_name
+    
     return jsonify({
         'model_loaded': model_loaded,
         'speaker_model': 'ECAPA-TDNN' if model_loaded else 'Not loaded',
         'parakeet_available': PARAKEET_AVAILABLE,
         'parakeet_loaded': parakeet_model is not None,
         'parakeet_model_name': current_parakeet_model_name if parakeet_model is not None else None,
+        'voxtral_available': VOXTRAL_AVAILABLE,
+        'voxtral_loaded': voxtral_model is not None,
+        'voxtral_model_name': current_voxtral_model_name if voxtral_model is not None else None,
+        'asr_model_loaded': parakeet_model is not None or voxtral_model is not None,
+        'asr_model_name': active_model,
+        'pyannote_available': PYANNOTE_AVAILABLE,
+        'pyannote_loaded': pyannote_segmentation is not None,
         'device': device,
         'speakers_enrolled': speakers_with_hash,
         'speaker_count': len(speaker_memory)
@@ -538,6 +993,44 @@ def initialize():
         # if PARAKEET_AVAILABLE:
         #     init_parakeet()
         return jsonify({'success': True, 'message': 'Model initialized successfully'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/init-pyannote', methods=['POST'])
+def initialize_pyannote():
+    """Initialize Pyannote segmentation model for hybrid speaker change detection.
+    
+    Requires HuggingFace token in request body or HF_TOKEN environment variable.
+    """
+    if not PYANNOTE_AVAILABLE:
+        return jsonify({
+            'success': False, 
+            'error': 'Pyannote not installed. Run: pip install pyannote.audio'
+        }), 400
+    
+    # Get token from request or environment
+    data = request.get_json() or {}
+    hf_token = data.get('hf_token') or data.get('token')
+    
+    try:
+        success = init_pyannote_segmentation(hf_token)
+        if success:
+            return jsonify({
+                'success': True,
+                'message': 'Pyannote segmentation model loaded successfully',
+                'model': 'pyannote/segmentation-3.0'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to load Pyannote. Check HuggingFace token and model access.',
+                'instructions': [
+                    '1. Get token at: https://huggingface.co/settings/tokens',
+                    '2. Accept terms at: https://huggingface.co/pyannote/segmentation-3.0',
+                    '3. Pass token in request body or set HF_TOKEN environment variable'
+                ]
+            }), 400
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -564,31 +1057,165 @@ def enroll_speaker():
         return jsonify({'success': False, 'error': 'Invalid file type'}), 400
     
     try:
-        # Save file temporarily
+        audio_data = file.read()
         filename = secure_filename(file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
+        ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
         
-        # Load and process audio with noise reduction
-        wav, sr = load_audio_with_noise_reduction(filepath, target_sr=16000, apply_nr=True)
+        # Handle WebM from browser recording
+        if ext == 'webm':
+            # Convert WebM to WAV using pydub
+            audio_segment = AudioSegment.from_file(io.BytesIO(audio_data), format="webm")
+            audio_segment = audio_segment.set_frame_rate(16000).set_channels(1)
+            
+            wav_buffer = io.BytesIO()
+            audio_segment.export(wav_buffer, format="wav")
+            wav_buffer.seek(0)
+            
+            wav, sr = librosa.load(wav_buffer, sr=16000, mono=True)
+        else:
+            # Save and load other formats directly
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            with open(filepath, 'wb') as f:
+                f.write(audio_data)
+            
+            wav, sr = librosa.load(filepath, sr=16000, mono=True)
+            os.remove(filepath)
+        
+        # Apply noise reduction
+        wav = reduce_noise(wav, sr)
+        
+        # Check audio quality
+        duration = len(wav) / sr
+        if duration < 1.0:
+            return jsonify({'success': False, 'error': f'Recording too short ({duration:.1f}s). Please record at least 2 seconds.'}), 400
+        
+        if np.max(np.abs(wav)) < 0.01:
+            return jsonify({'success': False, 'error': 'No audio detected. Please speak louder.'}), 400
+        
+        # Extract and store embedding
         emb = extract_embedding(wav, sr)
-        
-        # Store embedding
         speaker_memory[name] = emb
-        
-        # Clean up
-        os.remove(filepath)
         
         # Save to disk for persistence
         save_speaker_memory()
         
         return jsonify({
             'success': True,
-            'message': f"Speaker '{name}' enrolled successfully",
+            'message': f"Speaker '{name}' enrolled successfully ({duration:.1f}s audio)",
             'speaker_count': len(speaker_memory)
         })
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/enroll-from-hash', methods=['POST'])
+def enroll_from_hash():
+    """Enroll a speaker using their session hash (fingerprint).
+    
+    This allows enrolling unenrolled speakers from the transcript by clicking
+    on their hash and assigning a name.
+    """
+    global speaker_memory, session_speakers, adaptive_update_counter
+    
+    if not model_loaded:
+        return jsonify({'success': False, 'error': 'Model not initialized'}), 400
+    
+    data = request.get_json()
+    speaker_hash = data.get('hash', '').strip().upper()
+    name = data.get('name', '').strip()
+    merge_with_existing = data.get('merge', False)
+    
+    if not speaker_hash:
+        return jsonify({'success': False, 'error': 'Speaker hash is required'}), 400
+    
+    if not name:
+        return jsonify({'success': False, 'error': 'Speaker name is required'}), 400
+    
+    # Remove # prefix if present
+    if speaker_hash.startswith('#'):
+        speaker_hash = speaker_hash[1:]
+    
+    # Look up embedding from session speakers
+    if speaker_hash not in session_speakers:
+        return jsonify({'success': False, 'error': f'Unknown speaker hash: {speaker_hash}. Speaker may have expired from session.'}), 400
+    
+    try:
+        session_embedding = session_speakers[speaker_hash]
+        
+        # Convert to tensor for storage
+        if isinstance(session_embedding, np.ndarray):
+            emb_tensor = torch.tensor(session_embedding).float()
+        else:
+            emb_tensor = session_embedding
+        
+        if merge_with_existing and name in speaker_memory:
+            # Use adaptive learning to update existing speaker's embedding (EMA)
+            existing_emb = speaker_memory[name]
+            if hasattr(existing_emb, 'cpu'):
+                existing_np = existing_emb.cpu().numpy().flatten()
+            else:
+                existing_np = np.array(existing_emb).flatten()
+            
+            new_emb = session_embedding.flatten()
+            
+            # Exponential moving average - learn from the new fingerprint
+            # Use higher learning rate (0.3) for manual merges since user confirmed identity
+            merge_learning_rate = 0.3  # Higher than auto-update (0.1) since user confirmed
+            merged = (1 - merge_learning_rate) * existing_np + merge_learning_rate * new_emb
+            
+            # Normalize the merged embedding
+            merged = merged / (np.linalg.norm(merged) + 1e-8)
+            speaker_memory[name] = torch.tensor(merged).float()
+            
+            # Track the update
+            adaptive_update_counter[name] = adaptive_update_counter.get(name, 0) + 1
+            update_count = adaptive_update_counter[name]
+            
+            message = f"Learned fingerprint into '{name}' (profile update #{update_count})"
+            print(f"Adaptive merge: '{name}' learned from hash #{speaker_hash}, update #{update_count}")
+        else:
+            # Create new speaker or overwrite
+            speaker_memory[name] = emb_tensor
+            message = f"Speaker '{name}' enrolled from fingerprint"
+        
+        # Save to disk
+        save_speaker_memory()
+        
+        return jsonify({
+            'success': True,
+            'message': message,
+            'speaker_count': len(speaker_memory),
+            'hash': speaker_hash,
+            'name': name
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/session-speakers', methods=['GET'])
+def get_session_speakers():
+    """Get list of unenrolled session speakers (hashes)."""
+    unenrolled = []
+    enrolled_hashes = set()
+    
+    # Get hashes of enrolled speakers
+    for name, emb in speaker_memory.items():
+        enrolled_hashes.add(embedding_to_hash(emb))
+    
+    # Get unenrolled session speakers
+    for speaker_hash in session_speakers.keys():
+        if speaker_hash.upper() not in enrolled_hashes:
+            unenrolled.append(speaker_hash)
+    
+    return jsonify({
+        'success': True,
+        'unenrolled': unenrolled,
+        'enrolled': list(speaker_memory.keys())
+    })
 
 
 @app.route('/api/identify', methods=['POST'])
@@ -733,12 +1360,14 @@ def clear_speakers():
 
 @app.route('/api/identify-live', methods=['POST'])
 def identify_live():
-    """Identify speaker from live audio chunk (WebM/Opus from browser or WAV)."""
+    """Identify speaker from live audio chunk (WebM/Opus from browser or WAV).
+    
+    Now supports session-based speaker fingerprinting (like YouTube tab):
+    - If enrolled match found above threshold: returns enrolled name
+    - If no match: assigns/matches a session speaker hash (e.g., #DDF423)
+    """
     if not model_loaded:
         return jsonify({'success': False, 'error': 'Model not initialized'}), 400
-    
-    if not speaker_memory:
-        return jsonify({'success': False, 'error': 'No speakers enrolled'}), 400
     
     if 'audio' not in request.files:
         return jsonify({'success': False, 'error': 'No audio data'}), 400
@@ -786,8 +1415,8 @@ def identify_live():
         # Extract embedding
         emb = extract_embedding(wav, sr)
         
-        # Find best match
-        best_name = "Unknown"
+        # Find best match among enrolled speakers
+        best_name = None
         best_score = -1.0
         all_scores = {}
         
@@ -799,22 +1428,26 @@ def identify_live():
                 best_score = score
                 best_name = name
         
-        # Check threshold
-        if best_score < threshold:
-            identified = "Unknown"
-            print(f"  -> UNKNOWN (best: {best_name} @ {best_score:.4f}, threshold: {threshold})")
-        else:
+        # Check if we have an enrolled match above threshold
+        if best_name and best_score >= threshold:
             identified = best_name
-            print(f"  -> IDENTIFIED: {identified} @ {best_score:.4f}")
+            print(f"  -> IDENTIFIED (enrolled): {identified} @ {best_score:.4f}")
+        else:
+            # No enrolled match - use session speaker fingerprinting (like YouTube tab)
+            speaker_hash = get_stable_speaker_id(emb)
+            identified = f"#{speaker_hash}"
+            print(f"  -> FINGERPRINTED: {identified} (best enrolled: {best_name} @ {best_score:.4f}, threshold: {threshold})")
         
         return jsonify({
             'success': True,
             'identified': identified,
-            'best_match': best_name,
-            'similarity': round(best_score, 4),
+            'best_match': best_name or 'None',
+            'similarity': round(best_score, 4) if best_score >= 0 else 0,
             'all_scores': all_scores
         })
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -944,14 +1577,15 @@ def extract_name_from_text(text):
 
 @app.route('/api/transcribe', methods=['POST'])
 def transcribe_audio():
-    """Transcribe audio using Parakeet-MLX (Apple Silicon optimized)."""
+    """Transcribe audio using the currently loaded ASR model (Parakeet or Voxtral)."""
     if 'audio' not in request.files:
         return jsonify({'success': False, 'error': 'No audio data'}), 400
     
-    if not PARAKEET_AVAILABLE:
+    # Check if any model is loaded
+    if parakeet_model is None and voxtral_model is None:
         return jsonify({
             'success': False, 
-            'error': 'Parakeet-MLX not available. Install with: pip install parakeet-mlx',
+            'error': 'No ASR model loaded. Please select and initialize a model in Settings.',
             'use_browser': True
         }), 400
     
@@ -985,9 +1619,18 @@ def transcribe_audio():
         wav = reduce_noise(wav, sr, level=noise_level)
         sf.write(temp_path, wav, sr)
         
-        # Transcribe with Parakeet
-        text = transcribe_with_parakeet(temp_path)
-        print(f"Transcription text: '{text}'")
+        # Transcribe with whichever model is loaded (Parakeet preferred for speed)
+        text = None
+        model_used = None
+        
+        if parakeet_model is not None:
+            text = transcribe_with_parakeet(temp_path)
+            model_used = current_parakeet_model_name
+        elif voxtral_model is not None:
+            text = transcribe_with_voxtral(temp_path)
+            model_used = current_voxtral_model_name
+        
+        print(f"Transcription text (using {model_used}): '{text}'")
         
         # Clean up
         if os.path.exists(temp_path):
@@ -997,6 +1640,7 @@ def transcribe_audio():
             return jsonify({
                 'success': True,
                 'text': text,
+                'model': model_used,
                 'use_browser': False
             })
         else:
@@ -1078,8 +1722,12 @@ def process_streaming():
             temp_path = os.path.join(app.config['UPLOAD_FOLDER'], 'temp_stream.wav')
             sf.write(temp_path, wav, sr)
             
-            # Transcribe (fast with small chunk)
-            text = transcribe_with_parakeet(temp_path)
+            # Transcribe with whichever model is loaded
+            text = None
+            if parakeet_model is not None:
+                text = transcribe_with_parakeet(temp_path)
+            elif voxtral_model is not None:
+                text = transcribe_with_voxtral(temp_path)
             if not text:
                 text = ''
             
@@ -1106,6 +1754,20 @@ def process_streaming():
             if len(chunk_history) > MAX_CHUNK_HISTORY:
                 chunk_history.pop(0)
             
+            # IMMEDIATE chunk-level speaker change detection (before accumulation)
+            immediate_speaker_change = False
+            if prev_embedding_json:
+                try:
+                    prev_emb = np.array(json.loads(prev_embedding_json))
+                    # Compare current chunk directly with previous embedding
+                    chunk_vs_prev_sim = float(np.dot(chunk_emb_np.flatten(), prev_emb.flatten()) / 
+                                              (np.linalg.norm(chunk_emb_np) * np.linalg.norm(prev_emb) + 1e-8))
+                    if chunk_vs_prev_sim < 0.20:  # Very low similarity = likely different speaker (was 0.35, too aggressive)
+                        immediate_speaker_change = True
+                        print(f"IMMEDIATE speaker change detected: chunk_sim={chunk_vs_prev_sim:.3f}")
+                except:
+                    pass
+            
             # Calculate total accumulated duration
             total_samples = sum(len(chunk) for chunk in accumulated_audio)
             total_duration = total_samples / sr
@@ -1114,6 +1776,12 @@ def process_streaming():
             stable_embedding_ready = False
             speaker_change_detected = False
             split_at_index = None
+            
+            # If immediate speaker change detected, reset accumulation for faster ID
+            if immediate_speaker_change:
+                # Clear old accumulated audio - start fresh with new speaker
+                accumulated_audio = [wav]  # Start fresh with current chunk
+                print("Accumulation reset due to immediate speaker change")
             
             # Only do stable speaker detection when we have enough audio
             if total_duration >= ACCUM_DURATION_FOR_SPEAKER_ID:
@@ -1155,6 +1823,7 @@ def process_streaming():
         else:
             speaker = f'#{stable_speaker_id}'  # Hash
         best_sim = 0
+        matched_enrolled_name = None
         if speaker_memory:
             for name, emb in speaker_memory.items():
                 if hasattr(emb, 'cpu'):
@@ -1166,27 +1835,65 @@ def process_streaming():
                 if sim > best_sim and sim > threshold:
                     best_sim = sim
                     speaker = name  # Use enrolled name if matched
+                    matched_enrolled_name = name
+        
+        # Adaptive profile update: improve enrolled speaker embedding with new audio
+        if matched_enrolled_name and best_sim >= ADAPTIVE_UPDATE_THRESHOLD and stable_embedding_ready:
+            update_speaker_profile(matched_enrolled_name, current_emb_np)
         
         # HYBRID SPEAKER CHANGE DETECTION
-        # Only check for speaker change when we have stable embedding (3+ seconds)
+        # Use Pyannote for immediate change detection (every chunk)
+        # Use ECAPA-TDNN 3-second accumulation for stable speaker ID
         speaker_changed = False
         split_at_chunk_index = None
+        change_method = 'none'
         
-        if stable_embedding_ready:
-            # Check if speaker changed from last stable detection
-            if last_stable_speaker is not None and speaker != last_stable_speaker:
+        # Check for immediate speaker change first (from chunk-level detection)
+        if immediate_speaker_change:
+            speaker_changed = True
+            change_method = 'immediate_chunk'
+            print(f"Speaker change flagged: method=immediate_chunk")
+        
+        # Get previous embedding for comparison
+        prev_emb = None
+        if prev_embedding_json:
+            try:
+                prev_emb = np.array(json.loads(prev_embedding_json))
+            except:
+                pass
+        
+        # Try hybrid detection on EVERY chunk (not just after 3 seconds)
+        print(f"Hybrid check: pyannote={pyannote_segmentation is not None}, prev_emb={prev_emb is not None}")
+        if pyannote_segmentation is not None or prev_emb is not None:
+            hybrid_result = hybrid_speaker_change_detection(
+                wav, sr, 
+                current_emb_np, 
+                prev_emb,
+                ecapa_threshold=0.30  # Threshold for speaker change (was 0.40, too aggressive for single speaker)
+            )
+            print(f"Hybrid result: changed={hybrid_result['speaker_changed']}, method={hybrid_result['method']}, ecapa_sim={hybrid_result['ecapa_sim']:.3f}")
+            if hybrid_result['speaker_changed']:
                 speaker_changed = True
-                print(f"Speaker change detected: {last_stable_speaker} -> {speaker}")
+                change_method = hybrid_result['method']
+                print(f"Hybrid change detected: method={change_method}, confidence={hybrid_result['confidence']:.2f}")
+                print(f"  ECAPA sim: {hybrid_result['ecapa_sim']:.3f}, Pyannote prob: {hybrid_result['pyannote_prob']:.3f}")
+        
+        # Also check stable speaker change (backup for when hybrid misses)
+        if stable_embedding_ready:
+            if last_stable_speaker is not None and speaker != last_stable_speaker:
+                if not speaker_changed:  # Only if hybrid didn't already detect
+                    speaker_changed = True
+                    change_method = 'stable_3s'
+                    print(f"Stable speaker change: {last_stable_speaker} -> {speaker}")
                 
                 # Find exact split point by checking chunk history
-                # Look for first chunk that matches new speaker
                 if len(chunk_history) > 1:
                     new_speaker_emb = current_emb_np.flatten()
-                    for i, chunk in enumerate(chunk_history[:-1]):  # Exclude current chunk
+                    for i, chunk in enumerate(chunk_history[:-1]):
                         chunk_emb = chunk['embedding']
                         sim = float(np.dot(chunk_emb, new_speaker_emb) / 
                                    (np.linalg.norm(chunk_emb) * np.linalg.norm(new_speaker_emb) + 1e-8))
-                        if sim > 0.20:  # Matches new speaker
+                        if sim > 0.20:
                             split_at_chunk_index = chunk['index']
                             print(f"Split point found at chunk {split_at_chunk_index} (sim={sim:.3f})")
                             break
@@ -1201,6 +1908,7 @@ def process_streaming():
             'similarity': round(best_sim, 3),
             'is_sentence_end': is_sentence_end,
             'speaker_changed': speaker_changed,
+            'change_method': change_method,
             'split_at_chunk_index': split_at_chunk_index,
             'chunk_index': chunk_index_counter,
             'embedding': current_emb_np.flatten().tolist()  # For next comparison

@@ -639,14 +639,13 @@
                 <span>Speakers: <strong id="speakerCount">0</strong></span>
             </div>
             <button class="btn btn-primary" id="initBtn" onclick="initModel()">
-                Initialize Model
+                Initialize All Models
             </button>
         </div>
         
         <div class="tabs">
             <button class="tab-btn active" onclick="switchTab('manage')">Manage</button>
-            <button class="tab-btn" onclick="switchTab('live')">Live</button>
-            <button class="tab-btn" onclick="switchTab('youtube')">YouTube</button>
+            <button class="tab-btn" onclick="switchTab('youtube')">YouTube / Mic</button>
             <button class="tab-btn" onclick="switchTab('settings')">Settings</button>
         </div>
         
@@ -660,16 +659,60 @@
                         <label>Speaker Name</label>
                         <input type="text" id="enrollName" placeholder="Enter speaker name" required>
                     </div>
+                    
+                    <!-- Input Method Toggle -->
                     <div class="form-group">
+                        <label>Voice Sample Source</label>
+                        <div style="display: flex; gap: 10px; margin-top: 8px;">
+                            <button type="button" id="enrollMethodFile" class="btn" style="flex: 1; background: #00ff88; color: #000;" onclick="setEnrollMethod('file')">
+                                📁 Upload File
+                            </button>
+                            <button type="button" id="enrollMethodMic" class="btn" style="flex: 1; background: #333;" onclick="setEnrollMethod('mic')">
+                                🎤 Record from Mic
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- File Upload Option -->
+                    <div class="form-group" id="enrollFileSection">
                         <label>Voice Sample</label>
                         <div class="file-input-wrapper">
                             <div class="file-input-label" id="enrollFileLabel">
                                 <span>Click or drag audio file here</span>
                             </div>
-                            <input type="file" id="enrollFile" accept="audio/*" required 
+                            <input type="file" id="enrollFile" accept="audio/*" 
                                    onchange="updateFileLabel(this, 'enrollFileLabel')">
                         </div>
                     </div>
+                    
+                    <!-- Microphone Recording Option -->
+                    <div class="form-group" id="enrollMicSection" style="display: none;">
+                        <label>Read This Sentence Aloud:</label>
+                        <div style="background: rgba(0,255,136,0.1); border-radius: 10px; padding: 15px; margin: 10px 0; border-left: 4px solid #00ff88;">
+                            <p style="color: #fff; font-size: 1.1em; line-height: 1.6; margin: 0; font-style: italic;">
+                                "The quick brown fox jumps over the lazy dog while the five boxing wizards jump quickly at dawn."
+                            </p>
+                            <p style="color: #888; font-size: 0.8em; margin-top: 10px;">~5-7 seconds • Covers all phonemes for best fingerprint quality</p>
+                        </div>
+                        
+                        <div style="display: flex; gap: 10px; align-items: center; margin-top: 15px;">
+                            <button type="button" id="enrollRecordBtn" class="btn" style="background: #ff4444; min-width: 140px;" onclick="toggleEnrollRecording()">
+                                🎤 Start Recording
+                            </button>
+                            <div id="enrollRecordStatus" style="color: #888;">Ready to record</div>
+                            <div id="enrollVadIndicator" style="width: 12px; height: 12px; border-radius: 50%; background: #333; margin-left: auto;" title="Voice Activity"></div>
+                        </div>
+                        
+                        <div id="enrollRecordingIndicator" style="display: none; margin-top: 10px;">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <div style="width: 12px; height: 12px; background: #ff4444; border-radius: 50%; animation: pulse 1s infinite;"></div>
+                                <span style="color: #ff4444;">Recording... <span id="enrollRecordTime">0.0</span>s</span>
+                            </div>
+                        </div>
+                        
+                        <audio id="enrollRecordedAudio" controls style="display: none; width: 100%; margin-top: 10px;"></audio>
+                    </div>
+                    
                     <button type="submit" class="btn btn-primary" id="enrollBtn">Enroll Speaker</button>
                     <div class="loading" id="enrollLoading">
                         <div class="spinner"></div>
@@ -717,129 +760,99 @@
         </div>
         </div>
         
-        <!-- Live Tab -->
-        <div class="tab-content" id="tab-live">
-            <div class="live-container">
-                <!-- Live Enrollment Section -->
-                <div class="card" style="margin-bottom: 30px; text-align: left;">
-                    <h2><span class="icon">+</span> Register Voice (Live)</h2>
-                    
-                    <!-- Mode Toggle -->
-                    <div style="display: flex; gap: 10px; margin-bottom: 20px;">
-                        <button class="btn" id="manualModeBtn" onclick="setEnrollMode('manual')" style="background: linear-gradient(135deg, #00d4ff, #0099cc); color: #000;">Manual</button>
-                        <button class="btn" id="autoModeBtn" onclick="setEnrollMode('auto')" style="background: #333; color: #888;">Automatic (Voice)</button>
-                    </div>
-                    
-                    <!-- Manual Mode -->
-                    <div id="manualEnrollSection">
-                        <div class="form-group">
-                            <label>Speaker Name</label>
-                            <input type="text" id="liveEnrollName" placeholder="Enter speaker name">
-                        </div>
-                        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                            <button class="btn btn-success" id="startRecordBtn" onclick="startEnrollRecording()">Record Voice</button>
-                            <button class="btn btn-danger" id="stopRecordBtn" onclick="stopEnrollRecording()" disabled>Stop & Save</button>
-                            <span id="recordingTimer" style="color: #888; margin-left: 10px;"></span>
-                        </div>
-                    </div>
-                    
-                    <!-- Automatic Mode -->
-                    <div id="autoEnrollSection" style="display: none;">
-                        <div style="background: rgba(0,212,255,0.1); border-radius: 10px; padding: 15px; margin-bottom: 20px;">
-                            <p style="color: #00d4ff; margin: 0;">Say something like: <strong>"My name is [Your Name]"</strong></p>
-                            <p style="color: #888; margin: 5px 0 0 0; font-size: 0.9em;">Supported phrases: "My name is...", "I am...", "Call me...", "This is..."</p>
-                        </div>
-                        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 15px;">
-                            <button class="btn btn-success" id="startAutoRecordBtn" onclick="startAutoEnroll()">Start Recording</button>
-                            <button class="btn btn-danger" id="stopAutoRecordBtn" onclick="stopAutoEnroll()" disabled>Stop & Process</button>
-                            <span id="autoRecordingTimer" style="color: #888; margin-left: 10px;"></span>
-                        </div>
-                        <div id="transcriptDisplay" style="background: rgba(0,0,0,0.3); border-radius: 8px; padding: 15px; display: none;">
-                            <p style="color: #888; margin: 0 0 5px 0; font-size: 0.85em;">Detected speech:</p>
-                            <p id="transcriptText" style="color: #fff; margin: 0; font-size: 1.1em;"></p>
-                        </div>
-                    </div>
-                    
-                    <div class="result-box" id="enrollLiveResult" style="margin-top: 15px;"></div>
-                </div>
-                
-                <!-- Live Identification Section -->
-                <div class="live-display">
-                    <div class="visualizer-container" id="visualizer"></div>
-                    <div class="live-speaker" id="liveSpeaker">-</div>
-                    <div class="live-similarity" id="liveSimilarity">Similarity: -</div>
-                    <div id="liveTranscript" style="background: rgba(0,0,0,0.3); border-radius: 8px; padding: 15px; margin: 15px 0; max-height: 200px; overflow-y: auto;">
-                        <p style="color: #888; margin: 0 0 10px 0; font-size: 0.8em;">Live Transcript (say "My name is..." to enroll)</p>
-                        <div id="liveTranscriptLog" style="font-family: monospace; font-size: 0.95em; line-height: 1.6;"></div>
-                    </div>
-                    <div class="live-status" id="liveStatus">
-                        <span>Ready to start</span>
-                    </div>
-                </div>
-                
-                <div class="live-controls">
-                    <button class="btn btn-success" id="startLiveBtn" onclick="startLive()">Start Live</button>
-                    <button class="btn btn-danger" id="stopLiveBtn" onclick="stopLive()" disabled>Stop</button>
-                </div>
-                
-                <!-- Auto-enroll toggle -->
-                <div style="margin-top: 20px; padding: 15px; background: rgba(0,212,255,0.1); border-radius: 10px;">
-                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                        <input type="checkbox" id="autoEnrollToggle" checked style="width: 18px; height: 18px;">
-                        <span style="color: #00d4ff;">Auto-enroll when someone says "My name is..."</span>
-                    </label>
-                    <p style="color: #666; font-size: 0.85em; margin: 8px 0 0 28px;">New voices will be automatically registered during live identification</p>
-                </div>
-                
-                <div class="live-settings">
-                    <div class="form-group">
-                        <label>Similarity Threshold (0-1)</label>
-                        <input type="number" id="liveThreshold" value="0.7" min="0.5" max="1" step="0.05">
-                    </div>
-                    <div class="form-group">
-                        <label>Noise Reduction: <span id="noiseReductionValue">80%</span></label>
-                        <input type="range" id="noiseReduction" min="0" max="100" value="80" step="5" 
-                               oninput="document.getElementById('noiseReductionValue').textContent = this.value + '%'">
-                        <div style="display: flex; justify-content: space-between; font-size: 0.75em; color: #888;">
-                            <span>Off</span>
-                            <span>Light</span>
-                            <span>Medium</span>
-                            <span>Heavy</span>
-                            <span>Max</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="live-scores" id="liveScores"></div>
-            </div>
-        </div>
-        
         <!-- YouTube Tab -->
         <div class="tab-content" id="tab-youtube">
             <div class="card">
-                <h2><span class="icon">📺</span> YouTube Audio Processing</h2>
-                <p style="color: #888; margin-bottom: 20px;">Download YouTube audio and process it in real-time as you play!</p>
+                <h2><span class="icon">🎙️</span> Audio Processing</h2>
+                <p style="color: #888; margin-bottom: 20px;">Process YouTube audio or live microphone with speaker identification!</p>
                 
-                <div class="form-group">
-                    <label>YouTube URL</label>
-                    <input type="text" id="youtubeUrl" placeholder="https://www.youtube.com/watch?v=..." style="width: 100%;">
-                </div>
-                
-                <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px;">
-                    <button class="btn btn-primary" id="downloadYoutubeBtn" onclick="downloadYoutubeAudio()">
-                        <span>⬇️</span> Download Audio
+                <!-- Audio Source Toggle -->
+                <div style="display: flex; gap: 10px; margin-bottom: 25px; padding: 15px; background: rgba(255,255,255,0.05); border-radius: 10px;">
+                    <button class="btn" id="ytSourceBtn" onclick="setAudioSource('youtube')" style="flex: 1; background: linear-gradient(135deg, #00d4ff, #0099cc); color: #000;">
+                        📺 YouTube Audio
+                    </button>
+                    <button class="btn" id="micSourceBtn" onclick="setAudioSource('microphone')" style="flex: 1; background: #333; color: #888;">
+                        🎤 Live Microphone
                     </button>
                 </div>
                 
-                <div id="youtubeStatus" style="margin-bottom: 20px;">
-                    <div style="background: rgba(0,0,0,0.3); border-radius: 10px; padding: 15px;">
-                        <div style="color: #888;">Status: <span id="ytStatusText">Ready - Paste a YouTube URL and click Download</span></div>
-                        <div id="ytProgress" style="margin-top: 10px; display: none;">
-                            <div style="background: #333; border-radius: 5px; height: 8px; overflow: hidden;">
-                                <div id="ytProgressBar" style="background: linear-gradient(90deg, #00d4ff, #00ff88); height: 100%; width: 0%; transition: width 0.3s;"></div>
+                <!-- YouTube Mode Section -->
+                <div id="youtubeModeSection">
+                    <div class="form-group">
+                        <label>YouTube URL</label>
+                        <input type="text" id="youtubeUrl" placeholder="https://www.youtube.com/watch?v=..." style="width: 100%;">
+                    </div>
+                    
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px;">
+                        <button class="btn btn-primary" id="downloadYoutubeBtn" onclick="downloadYoutubeAudio()">
+                            <span>⬇️</span> Download Audio
+                        </button>
+                    </div>
+                    
+                    <div id="youtubeStatus" style="margin-bottom: 20px;">
+                        <div style="background: rgba(0,0,0,0.3); border-radius: 10px; padding: 15px;">
+                            <div style="color: #888;">Status: <span id="ytStatusText">Ready - Paste a YouTube URL and click Download</span></div>
+                            <div id="ytProgress" style="margin-top: 10px; display: none;">
+                                <div style="background: #333; border-radius: 5px; height: 8px; overflow: hidden;">
+                                    <div id="ytProgressBar" style="background: linear-gradient(90deg, #00d4ff, #00ff88); height: 100%; width: 0%; transition: width 0.3s;"></div>
+                                </div>
+                                <div style="color: #888; font-size: 0.85em; margin-top: 5px;" id="ytProgressText"></div>
                             </div>
-                            <div style="color: #888; font-size: 0.85em; margin-top: 5px;" id="ytProgressText"></div>
                         </div>
+                    </div>
+                </div>
+                
+                <!-- Microphone Mode Section -->
+                <div id="microphoneModeSection" style="display: none;">
+                    <div style="background: rgba(0,255,136,0.1); border-radius: 10px; padding: 20px; margin-bottom: 20px; border-left: 4px solid #00ff88;">
+                        <p style="color: #00ff88; margin: 0 0 10px 0; font-weight: bold;">🎤 Live Microphone Mode</p>
+                        <p style="color: #888; margin: 0; font-size: 0.9em;">Speak into your microphone for real-time transcription and speaker identification.</p>
+                    </div>
+                    
+                    <!-- Microphone Device Selector -->
+                    <div class="form-group" style="margin-bottom: 20px;">
+                        <label style="color: #888;">Select Microphone</label>
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <select id="microphoneSelect" style="flex: 1; padding: 12px; border-radius: 8px; background: #1a1a2e; border: 1px solid #333; color: #fff; font-size: 1em;">
+                                <option value="">Loading microphones...</option>
+                            </select>
+                            <button class="btn" onclick="refreshMicrophoneList()" style="padding: 12px; background: #333;" title="Refresh microphone list">
+                                🔄
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- VAD (Voice Activity Detection) Controls -->
+                    <div class="form-group" style="margin-bottom: 20px;">
+                        <label style="color: #888;">Voice Activity Detection (VAD)</label>
+                        <div style="display: flex; gap: 15px; align-items: center; margin-top: 8px;">
+                            <input type="range" id="vadThreshold" min="0" max="100" value="60" style="flex: 1;"
+                                   oninput="document.getElementById('vadValue').textContent = this.value + '%'">
+                            <span id="vadValue" style="color: #00ff88; min-width: 45px;">60%</span>
+                            <div id="vadIndicator" style="width: 12px; height: 12px; border-radius: 50%; background: #333; transition: background 0.1s;"></div>
+                        </div>
+                        <p style="color: #666; font-size: 0.8em; margin-top: 5px;">Filters silence. Higher = less sensitive (filters more). 0 = disabled.</p>
+                    </div>
+                    
+                    <!-- Silence Timeout Control -->
+                    <div class="form-group" style="margin-bottom: 20px;">
+                        <label style="color: #888;">Silence Timeout (auto-split)</label>
+                        <div style="display: flex; gap: 15px; align-items: center; margin-top: 8px;">
+                            <input type="range" id="silenceTimeout" min="0" max="5" value="2" step="0.5" style="flex: 1;"
+                                   oninput="document.getElementById('silenceValue').textContent = this.value == 0 ? 'Off' : this.value + 's'">
+                            <span id="silenceValue" style="color: #00d4ff; min-width: 45px;">2s</span>
+                        </div>
+                        <p style="color: #666; font-size: 0.8em; margin-top: 5px;">Auto-adds period and splits line after silence. 0 = disabled.</p>
+                    </div>
+                    
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px;">
+                        <button class="btn btn-success" id="startMicBtn" onclick="startMicrophoneProcessing()">
+                            <span>▶️</span> Start Microphone
+                        </button>
+                        <button class="btn btn-danger" id="stopMicBtn" onclick="stopMicrophoneProcessing()" disabled>
+                            <span>⏹</span> Stop
+                        </button>
+                        <span id="micStatus" style="color: #888; font-size: 0.9em; display: flex; align-items: center;"></span>
                     </div>
                 </div>
                 
@@ -962,12 +975,19 @@
                 
                 <div style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
                     <div style="flex: 1; min-width: 250px;">
-                        <label style="color: #888; font-size: 0.9em; display: block; margin-bottom: 8px;">Parakeet Model</label>
+                        <label style="color: #888; font-size: 0.9em; display: block; margin-bottom: 8px;">ASR Model</label>
                         <select id="parakeetModelSelect" style="width: 100%; padding: 12px; border-radius: 8px; background: #1a1a2e; border: 1px solid #333; color: #fff; font-size: 1em;">
-                            <option value="mlx-community/parakeet-tdt-1.1b">parakeet-tdt-1.1b (1.1B params, Most Accurate)</option>
-                            <option value="mlx-community/parakeet-tdt-0.6b-v3">parakeet-tdt-0.6b-v3 (600M params, Fast)</option>
-                            <option value="mlx-community/parakeet-ctc-1.1b">parakeet-ctc-1.1b (1.1B params, CTC)</option>
-                            <option value="mlx-community/parakeet-tdt-0.6b-v2">parakeet-tdt-0.6b-v2 (600M params, Older)</option>
+                            <optgroup label="Parakeet (Fast, Low-Latency)">
+                                <option value="mlx-community/parakeet-tdt-1.1b">parakeet-tdt-1.1b (1.1B, Most Accurate)</option>
+                                <option value="mlx-community/parakeet-tdt-0.6b-v3">parakeet-tdt-0.6b-v3 (600M, Fast)</option>
+                                <option value="mlx-community/parakeet-ctc-1.1b">parakeet-ctc-1.1b (1.1B, CTC)</option>
+                                <option value="mlx-community/parakeet-ctc-0.6b">parakeet-ctc-0.6b (600M, CTC Fast)</option>
+                                <option value="mlx-community/parakeet-tdt-0.6b-v2">parakeet-tdt-0.6b-v2 (600M, Older)</option>
+                            </optgroup>
+                            <optgroup label="Voxtral (Mistral ASR)">
+                                <option value="mlx-community/Voxtral-Mini-3B-2507-bf16">Voxtral-Mini-3B (3B, High Quality)</option>
+                                <option value="mlx-community/Voxtral-Mini-4B-Realtime-2602-4bit">Voxtral-Mini-4B-Realtime (4B, 4-bit)</option>
+                            </optgroup>
                         </select>
                     </div>
                     <div>
@@ -981,6 +1001,42 @@
                 
                 <div style="margin-top: 15px; color: #666; font-size: 0.85em;">
                     <strong>Note:</strong> First initialization downloads the model (~1-2GB). This may take a few minutes.
+                </div>
+            </div>
+            
+            <!-- Pyannote Hybrid Speaker Detection -->
+            <div class="card" style="margin-bottom: 30px;">
+                <h2><span class="icon">🎯</span> Hybrid Speaker Change Detection</h2>
+                <p style="color: #888; margin-bottom: 20px;">Enable Pyannote segmentation for more accurate speaker change detection.</p>
+                
+                <div style="background: rgba(138,43,226,0.1); border-radius: 10px; padding: 15px; border-left: 4px solid #8a2be2; margin-bottom: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div style="color: #8a2be2; font-weight: bold; margin-bottom: 5px;">Pyannote Segmentation</div>
+                            <div style="color: #fff; font-size: 1.1em;" id="pyannoteStatus">Not loaded</div>
+                        </div>
+                        <div id="pyannoteIndicator" style="width: 12px; height: 12px; border-radius: 50%; background: #333;"></div>
+                    </div>
+                </div>
+                
+                <div style="background: rgba(0,212,255,0.1); border-radius: 8px; padding: 12px; margin-bottom: 15px;">
+                        <span style="color: #00d4ff;">🔑</span>
+                        <span style="color: #888; font-size: 0.9em;">HuggingFace token loaded from <code style="color: #00ff88;">.env</code> file</span>
+                    </div>
+                
+                <button class="btn" onclick="initializePyannote()" id="initPyannoteBtn" style="background: linear-gradient(135deg, #8a2be2, #00d4ff);">
+                    🚀 Initialize Pyannote
+                </button>
+                
+                <div id="pyannoteInitStatus" style="margin-top: 15px; padding: 10px; border-radius: 8px; display: none;"></div>
+                
+                <div style="margin-top: 15px; padding: 15px; background: rgba(255,255,255,0.03); border-radius: 8px;">
+                    <div style="color: #888; font-size: 0.9em; margin-bottom: 10px;"><strong>How Hybrid Detection Works:</strong></div>
+                    <ul style="color: #666; font-size: 0.85em; margin: 0; padding-left: 20px;">
+                        <li><strong>Pyannote</strong> - Frame-level speaker change detection (when)</li>
+                        <li><strong>ECAPA-TDNN</strong> - Speaker embedding similarity (who)</li>
+                        <li><strong>Combined</strong> - Both must agree for high-confidence changes</li>
+                    </ul>
                 </div>
             </div>
             
@@ -1351,17 +1407,25 @@
             if (!text || text.trim() === '') return;
             
             const logEl = document.getElementById('liveTranscriptLog');
-            const isUnknown = speaker === 'Unknown';
-            const color = isUnknown ? '#888' : '#00ff88';
-            const speakerLabel = `[${speaker}]`;
+            // Color: green for enrolled, orange for unenrolled (hash or Speaker X)
+            const isUnenrolled = speaker.startsWith('#') || speaker.startsWith('Speaker ') || speaker === 'Unknown';
+            const speakerColor = isUnenrolled ? '#ffa500' : '#00ff88';
+            
+            // Make unenrolled speakers clickable for enrollment (except 'Unknown')
+            let speakerHtml;
+            if (speaker.startsWith('#') || speaker.startsWith('Speaker ')) {
+                speakerHtml = `<span style="color:${speakerColor}; cursor:pointer; font-weight:bold;" class="speaker-label-clickable" onclick="event.stopPropagation(); showEnrollModal('${speaker}')">[${speaker}]</span>`;
+            } else {
+                speakerHtml = `<span style="color:${speakerColor}; font-weight:bold;">[${speaker}]</span>`;
+            }
             
             // Add new line
             const line = document.createElement('div');
-            line.innerHTML = `<span style="color: ${color}; font-weight: bold;">${speakerLabel}</span> <span style="color: #e0e0e0;">${text}</span>`;
+            line.innerHTML = `${speakerHtml} <span style="color: #e0e0e0;">${text}</span>`;
             logEl.appendChild(line);
             
-            // Keep only last 10 lines
-            while (logEl.children.length > 10) {
+            // Keep only last 20 lines (more like YouTube tab)
+            while (logEl.children.length > 20) {
                 logEl.removeChild(logEl.firstChild);
             }
             
@@ -1371,8 +1435,9 @@
         
         function updateCurrentTranscript(speaker, text) {
             const logEl = document.getElementById('liveTranscriptLog');
-            const isUnknown = speaker === 'Unknown';
-            const color = isUnknown ? '#888' : '#00ff88';
+            // Color: green for enrolled, orange for unenrolled
+            const isUnenrolled = speaker.startsWith('#') || speaker.startsWith('Speaker ') || speaker === 'Unknown';
+            const speakerColor = isUnenrolled ? '#ffa500' : '#00ff88';
             
             // Update or create current line
             let currentLine = document.getElementById('current-transcript-line');
@@ -1383,7 +1448,15 @@
                 logEl.appendChild(currentLine);
             }
             
-            currentLine.innerHTML = `<span style="color: ${color}; font-weight: bold;">[${speaker}]</span> <span style="color: #aaa;">${text || '...'}</span>`;
+            // Make clickable if unenrolled (except Unknown)
+            let speakerHtml;
+            if (speaker.startsWith('#') || speaker.startsWith('Speaker ')) {
+                speakerHtml = `<span style="color:${speakerColor}; cursor:pointer; font-weight:bold;" onclick="event.stopPropagation(); showEnrollModal('${speaker}')">[${speaker}]</span>`;
+            } else {
+                speakerHtml = `<span style="color:${speakerColor}; font-weight:bold;">[${speaker}]</span>`;
+            }
+            
+            currentLine.innerHTML = `${speakerHtml} <span style="color: #aaa;">${text || '...'}</span>`;
             logEl.parentElement.scrollTop = logEl.parentElement.scrollHeight;
         }
         
@@ -1662,16 +1735,22 @@
             try {
                 // Send for identification
                 const res = await fetch('/api/identify-live', { method: 'POST', body: formData });
-                const data = await res.json();
                 
-                if (data.success) {
-                    updateLiveDisplay(data);
-                } else if (data.error && data.error.includes('No speakers enrolled')) {
-                    // Show helpful message
-                    document.getElementById('liveSpeaker').textContent = 'No speakers enrolled';
-                    document.getElementById('liveSpeaker').classList.add('unknown');
-                    document.getElementById('liveSimilarity').textContent = 'Say "My name is [Name]" to enroll';
-                    currentIdentifiedSpeaker = 'Unknown';
+                // Handle HTTP errors
+                if (!res.ok) {
+                    console.error('identify-live failed:', res.status);
+                    // Don't update speaker on error - keep current or use Unknown
+                } else {
+                    const data = await res.json();
+                    
+                    if (data.success) {
+                        updateLiveDisplay(data);
+                    } else if (data.error && data.error.includes('No speakers enrolled')) {
+                        // This is fine - we still fingerprint speakers
+                        currentIdentifiedSpeaker = 'Unknown';
+                    } else {
+                        console.error('identify-live error:', data.error);
+                    }
                 }
                 
                 // Always transcribe with Parakeet
@@ -1759,9 +1838,33 @@
             // Update current identified speaker for transcript
             currentIdentifiedSpeaker = data.identified || 'Unknown';
             
+            // Check if speaker is unenrolled (hash-based)
+            const isUnenrolled = data.identified && (data.identified.startsWith('#') || data.identified === 'Unknown');
+            
             speakerEl.textContent = data.identified || 'Unknown';
             speakerEl.classList.toggle('unknown', data.identified === 'Unknown');
-            similarityEl.textContent = `Similarity: ${Math.round((data.similarity || 0) * 100)}%`;
+            speakerEl.classList.toggle('fingerprinted', data.identified && data.identified.startsWith('#'));
+            
+            // Make fingerprinted speakers clickable
+            if (data.identified && data.identified.startsWith('#')) {
+                speakerEl.style.cursor = 'pointer';
+                speakerEl.style.color = '#ffa500';
+                speakerEl.onclick = () => showEnrollModal(data.identified);
+            } else {
+                speakerEl.style.cursor = 'default';
+                speakerEl.style.color = isUnenrolled ? '#666' : '#00d4ff';
+                speakerEl.onclick = null;
+            }
+            
+            // Show similarity info
+            if (data.similarity > 0) {
+                similarityEl.textContent = `Similarity: ${Math.round((data.similarity || 0) * 100)}%`;
+            } else if (data.identified && data.identified.startsWith('#')) {
+                similarityEl.textContent = 'Click to enroll this speaker';
+            } else {
+                similarityEl.textContent = 'Listening...';
+            }
+            
             if (data.all_scores && Object.keys(data.all_scores).length > 0) {
                 scoresEl.innerHTML = Object.entries(data.all_scores)
                     .sort((a, b) => b[1] - a[1])
@@ -1896,7 +1999,7 @@
         let ytChunkStartTime = 0;
         let ytLastProcessTime = 0;
         let ytSpeakerCounts = {};
-        const YT_CHUNK_DURATION = 1; // 1 second chunks for fast live feel
+        const YT_CHUNK_DURATION = 2; // 2 second chunks for better transcription accuracy
         
         // Streaming state for speaker-change segmentation
         let streamBuffer = '';
@@ -1910,6 +2013,396 @@
         
         // Chunk history for retroactive split (hybrid approach)
         let chunkTextHistory = []; // {index, text, speaker} for retroactive split
+        
+        // Audio source mode (youtube or microphone)
+        let audioSourceMode = 'youtube';
+        
+        // Microphone processing state
+        let micStream = null;
+        let micAudioContext = null;
+        let micScriptProcessor = null;
+        let micProcessing = false;
+        let micAudioChunks = [];
+        let micChunkStartTime = 0;
+        let micLastProcessTime = 0;
+        const MIC_CHUNK_DURATION = 2; // 2 second chunks for better transcription accuracy
+        let silenceStartTime = 0; // Track when silence started
+        
+        // Enumerate available microphones
+        async function refreshMicrophoneList() {
+            const select = document.getElementById('microphoneSelect');
+            select.innerHTML = '<option value="">Loading microphones...</option>';
+            
+            try {
+                // First request permission to access audio devices
+                await navigator.mediaDevices.getUserMedia({ audio: true });
+                
+                // Then enumerate devices
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const audioInputs = devices.filter(device => device.kind === 'audioinput');
+                
+                select.innerHTML = '';
+                
+                if (audioInputs.length === 0) {
+                    select.innerHTML = '<option value="">No microphones found</option>';
+                    return;
+                }
+                
+                audioInputs.forEach((device, index) => {
+                    const option = document.createElement('option');
+                    option.value = device.deviceId;
+                    option.textContent = device.label || `Microphone ${index + 1}`;
+                    select.appendChild(option);
+                });
+                
+                console.log('Found', audioInputs.length, 'microphones');
+            } catch (error) {
+                console.error('Error enumerating microphones:', error);
+                select.innerHTML = '<option value="">Error: ' + error.message + '</option>';
+            }
+        }
+        
+        function setAudioSource(mode) {
+            audioSourceMode = mode;
+            
+            const ytBtn = document.getElementById('ytSourceBtn');
+            const micBtn = document.getElementById('micSourceBtn');
+            const ytSection = document.getElementById('youtubeModeSection');
+            const micSection = document.getElementById('microphoneModeSection');
+            
+            if (mode === 'youtube') {
+                ytBtn.style.background = 'linear-gradient(135deg, #00d4ff, #0099cc)';
+                ytBtn.style.color = '#000';
+                micBtn.style.background = '#333';
+                micBtn.style.color = '#888';
+                ytSection.style.display = 'block';
+                micSection.style.display = 'none';
+                // Stop mic if running
+                if (micProcessing) stopMicrophoneProcessing();
+            } else {
+                micBtn.style.background = 'linear-gradient(135deg, #00ff88, #00d4ff)';
+                micBtn.style.color = '#000';
+                ytBtn.style.background = '#333';
+                ytBtn.style.color = '#888';
+                ytSection.style.display = 'none';
+                micSection.style.display = 'block';
+                // Stop YT processing if running
+                if (ytLiveProcessing) stopYoutubeLiveProcessing();
+                // Load available microphones
+                refreshMicrophoneList();
+            }
+        }
+        
+        async function startMicrophoneProcessing() {
+            console.log('startMicrophoneProcessing called');
+            try {
+                // Check if ASR model is loaded
+                const statusRes = await fetch('/api/status');
+                const statusData = await statusRes.json();
+                if (!statusData.asr_model_loaded) {
+                    alert('ASR model not loaded!\n\nPlease go to Settings tab → ASR Model Selection → Select a model → Click Initialize Model');
+                    return;
+                }
+            } catch (e) {
+                console.error('Failed to check status:', e);
+            }
+            
+            // Reset session speakers for fresh start
+            try {
+                await fetch('/api/reset-session-speakers', { method: 'POST' });
+            } catch (e) {
+                console.error('Failed to reset session:', e);
+            }
+            
+            // Reset transcript and state
+            youtubeTranscriptLines = [];
+            document.getElementById('youtubeTranscript').innerHTML = '';
+            ytSpeakerCounts = {};
+            updateYtSpeakerSummary();
+            streamBuffer = '';
+            streamSpeaker = 'Unknown';
+            streamPrevEmbedding = null;
+            streamStartTime = 0;
+            currentLineElement = null;
+            chunkTextHistory = [];
+            silenceStartTime = 0; // Reset silence tracking
+            
+            try {
+                // Get selected microphone device
+                const selectedDeviceId = document.getElementById('microphoneSelect').value;
+                
+                // Build audio constraints
+                const audioConstraints = {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true,
+                    sampleRate: 16000,
+                    channelCount: 1
+                };
+                
+                // If a specific device is selected, use it
+                if (selectedDeviceId) {
+                    audioConstraints.deviceId = { exact: selectedDeviceId };
+                }
+                
+                console.log('Requesting microphone with constraints:', audioConstraints);
+                
+                // Request microphone access
+                micStream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: audioConstraints
+                });
+                
+                micAudioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+                const source = micAudioContext.createMediaStreamSource(micStream);
+                
+                // Create script processor for capturing audio (4096 samples buffer)
+                micScriptProcessor = micAudioContext.createScriptProcessor(4096, 1, 1);
+                
+                micScriptProcessor.onaudioprocess = (e) => {
+                    if (!micProcessing) return;
+                    
+                    const inputData = e.inputBuffer.getChannelData(0);
+                    // Clone the data
+                    const audioData = new Float32Array(inputData.length);
+                    audioData.set(inputData);
+                    
+                    micAudioChunks.push(audioData);
+                    
+                    // Process chunks every MIC_CHUNK_DURATION seconds
+                    const currentTime = Date.now() / 1000;
+                    if (currentTime - micLastProcessTime >= MIC_CHUNK_DURATION && micAudioChunks.length > 0) {
+                        micLastProcessTime = currentTime;
+                        processMicrophoneChunk(currentTime);
+                    }
+                };
+                
+                // Connect
+                source.connect(micScriptProcessor);
+                micScriptProcessor.connect(micAudioContext.destination);
+                
+                micProcessing = true;
+                micChunkStartTime = Date.now() / 1000;
+                micLastProcessTime = micChunkStartTime;
+                
+                document.getElementById('startMicBtn').disabled = true;
+                document.getElementById('stopMicBtn').disabled = false;
+                document.getElementById('micStatus').innerHTML = '<div class="pulse-dot" style="width:10px;height:10px;background:#ff4444;border-radius:50%;animation:pulse 1s infinite;"></div><span style="margin-left:8px;">Listening...</span>';
+                
+                console.log('Microphone processing started successfully');
+                
+            } catch (error) {
+                console.error('Microphone error:', error);
+                alert('Could not access microphone: ' + error.message);
+            }
+        }
+        
+        function stopMicrophoneProcessing() {
+            micProcessing = false;
+            
+            // Finalize current line
+            if (currentLineElement) {
+                currentLineElement.classList.remove('live-updating');
+                currentLineElement = null;
+            }
+            
+            // Clean up
+            if (micScriptProcessor) {
+                micScriptProcessor.disconnect();
+                micScriptProcessor = null;
+            }
+            if (micStream) {
+                micStream.getTracks().forEach(track => track.stop());
+                micStream = null;
+            }
+            if (micAudioContext) {
+                micAudioContext.close();
+                micAudioContext = null;
+            }
+            
+            micAudioChunks = [];
+            
+            document.getElementById('startMicBtn').disabled = false;
+            document.getElementById('stopMicBtn').disabled = true;
+            document.getElementById('micStatus').textContent = 'Stopped';
+        }
+        
+        async function processMicrophoneChunk(currentTime) {
+            if (micAudioChunks.length === 0) return;
+            
+            // Merge all audio chunks
+            let totalLength = 0;
+            for (const chunk of micAudioChunks) {
+                totalLength += chunk.length;
+            }
+            
+            const mergedBuffer = new Float32Array(totalLength);
+            let offset = 0;
+            for (const chunk of micAudioChunks) {
+                mergedBuffer.set(chunk, offset);
+                offset += chunk.length;
+            }
+            
+            // VAD: Calculate RMS (Root Mean Square) energy
+            let sumSquares = 0;
+            for (let i = 0; i < mergedBuffer.length; i++) {
+                sumSquares += mergedBuffer[i] * mergedBuffer[i];
+            }
+            const rms = Math.sqrt(sumSquares / mergedBuffer.length);
+            const rmsDb = 20 * Math.log10(rms + 1e-10); // Convert to dB
+            
+            // VAD threshold check
+            const vadThreshold = parseInt(document.getElementById('vadThreshold').value) || 0;
+            const vadIndicator = document.getElementById('vadIndicator');
+            
+            // Map slider 0-100 to dB threshold (-60 to -20 dB)
+            // 0% = disabled, 100% = -20dB (very high threshold)
+            const minDb = -60;
+            const maxDb = -20;
+            const thresholdDb = vadThreshold === 0 ? -100 : minDb + (vadThreshold / 100) * (maxDb - minDb);
+            
+            const isSpeech = rmsDb > thresholdDb;
+            
+            // Update VAD indicator
+            if (vadIndicator) {
+                vadIndicator.style.background = isSpeech ? '#00ff88' : '#333';
+            }
+            
+            // Skip if below VAD threshold (silence)
+            if (vadThreshold > 0 && !isSpeech) {
+                // Track silence duration for auto-split
+                const silenceTimeout = parseFloat(document.getElementById('silenceTimeout').value) || 0;
+                
+                if (silenceTimeout > 0) {
+                    if (silenceStartTime === 0) {
+                        // Start tracking silence
+                        silenceStartTime = Date.now() / 1000;
+                    } else {
+                        const silenceDuration = (Date.now() / 1000) - silenceStartTime;
+                        
+                        // If silence exceeds timeout, finalize current line
+                        if (silenceDuration >= silenceTimeout && currentLineElement) {
+                            // Add period if line doesn't end with punctuation
+                            const textSpan = currentLineElement.querySelector('span:last-child');
+                            if (textSpan) {
+                                let text = textSpan.textContent.trim();
+                                if (text && !/[.!?]$/.test(text)) {
+                                    textSpan.textContent = text + '.';
+                                }
+                            }
+                            // Mark line as complete
+                            currentLineElement.classList.remove('live-updating');
+                            currentLineElement = null;
+                            console.log('Auto-split: silence timeout reached (' + silenceDuration.toFixed(1) + 's)');
+                            // Reset silence timer
+                            silenceStartTime = 0;
+                        }
+                    }
+                }
+                
+                // Clear chunks but don't process
+                micAudioChunks = [];
+                micChunkStartTime = currentTime;
+                return;
+            }
+            
+            // Speech detected - reset silence timer
+            silenceStartTime = 0;
+            
+            // Record timestamp
+            const chunkTime = micChunkStartTime;
+            if (streamStartTime === 0) streamStartTime = chunkTime;
+            
+            // Clear chunks for next batch
+            micAudioChunks = [];
+            micChunkStartTime = currentTime;
+            
+            // Convert to WAV and send to streaming endpoint
+            try {
+                const sampleRate = micAudioContext ? micAudioContext.sampleRate : 16000;
+                const wavBlob = float32ArrayToWav(mergedBuffer, sampleRate);
+                
+                const formData = new FormData();
+                formData.append('audio', wavBlob, 'chunk.wav');
+                formData.append('threshold', document.getElementById('threshold')?.value || '0.5');
+                formData.append('noise_level', document.getElementById('noiseLevel')?.value || '50');
+                if (streamPrevEmbedding) {
+                    formData.append('prev_embedding', JSON.stringify(streamPrevEmbedding));
+                }
+                
+                const res = await fetch('/api/process-streaming', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    // Skip empty transcriptions
+                    if (!data.text || data.text.trim() === '') {
+                        // Just skip
+                    } else {
+                        const currentSpeaker = data.speaker || 'Unknown';
+                        const chunkIndex = data.chunk_index;
+                        
+                        // Store in history
+                        chunkTextHistory.push({
+                            index: chunkIndex,
+                            text: data.text,
+                            speaker: currentSpeaker,
+                            time: chunkTime
+                        });
+                        if (chunkTextHistory.length > 20) chunkTextHistory.shift();
+                        
+                        // Check for speaker change
+                        // Check if speaker changed - trust backend signal even if name not updated yet
+                        const speakerChanged = data.speaker_changed || (currentSpeaker !== streamSpeaker && currentSpeaker !== 'Unknown');
+                        
+                        if (speakerChanged && streamBuffer.length > 0) {
+                            // Finalize previous line immediately
+                            console.log(`Speaker change: ${streamSpeaker} -> ${currentSpeaker}, method=${data.change_method}`);
+                            if (currentLineElement) {
+                                currentLineElement.classList.remove('live-updating');
+                                currentLineElement = null;
+                            }
+                            streamBuffer = data.text;
+                            streamStartTime = chunkTime;
+                            streamSpeaker = currentSpeaker;
+                            chunkTextHistory = [];
+                        } else {
+                            if (streamBuffer.length === 0) {
+                                streamStartTime = chunkTime;
+                                streamSpeaker = currentSpeaker;
+                            }
+                            streamBuffer += ' ' + data.text;
+                            updateOrCreateLiveLine(streamStartTime, streamSpeaker, streamBuffer.trim());
+                            
+                            // Check for sentence end
+                            const trimmedBuffer = streamBuffer.trim();
+                            const wordCount = trimmedBuffer.split(/\s+/).length;
+                            if (trimmedBuffer.match(/[.!?]["']?$/) && wordCount >= 5) {
+                                if (currentLineElement) {
+                                    currentLineElement.classList.remove('live-updating');
+                                    currentLineElement = null;
+                                }
+                                streamBuffer = '';
+                                streamStartTime = chunkTime + 1;
+                                chunkTextHistory = [];
+                            }
+                        }
+                    }
+                    
+                    // Store embedding
+                    streamPrevEmbedding = data.embedding;
+                    
+                    // Update speaker counts
+                    if (data.speaker !== 'Unknown') {
+                        ytSpeakerCounts[data.speaker] = (ytSpeakerCounts[data.speaker] || 0) + 1;
+                        updateYtSpeakerSummary();
+                    }
+                }
+            } catch (error) {
+                console.error('Error processing mic chunk:', error);
+            }
+        }
         
         async function downloadYoutubeAudio() {
             const url = document.getElementById('youtubeUrl').value.trim();
@@ -2033,8 +2526,8 @@
             try {
                 const statusRes = await fetch('/api/status');
                 const status = await statusRes.json();
-                if (!status.parakeet_loaded) {
-                    alert('Parakeet ASR model not loaded!\n\nPlease go to Settings tab → ASR Model Selection → Select a model → Click Initialize Model');
+                if (!status.parakeet_loaded && !status.voxtral_loaded) {
+                    alert('ASR model not loaded!\n\nPlease go to Settings tab → ASR Model Selection → Select a model → Click Initialize Model');
                     return;
                 }
             } catch (e) {
@@ -2408,45 +2901,58 @@
                             chunkTextHistory.shift();
                         }
                         
-                        // HYBRID SPEAKER CHANGE: Backend detected change with stable 3s embedding
-                        if (data.speaker_changed && data.split_at_chunk_index && currentLineElement) {
-                            console.log(`Speaker change detected! Split at chunk ${data.split_at_chunk_index}`);
+                        // HYBRID SPEAKER CHANGE: Backend detected change
+                        // Handle immediate change (no split_at_chunk_index) or retroactive split
+                        if (data.speaker_changed && currentLineElement) {
+                            console.log(`Speaker change detected! method=${data.change_method}`);
                             
-                            // Find the split point in chunk history
-                            const splitIdx = chunkTextHistory.findIndex(c => c.index >= data.split_at_chunk_index);
+                            if (data.split_at_chunk_index) {
+                                // Retroactive split - find the split point in chunk history
+                                const splitIdx = chunkTextHistory.findIndex(c => c.index >= data.split_at_chunk_index);
                             
-                            if (splitIdx > 0) {
-                                // Split: chunks before splitIdx stay with old speaker
-                                // chunks from splitIdx onwards go to new speaker
-                                const oldChunks = chunkTextHistory.slice(0, splitIdx);
-                                const newChunks = chunkTextHistory.slice(splitIdx);
-                                
-                                // Finalize old line with old speaker's text
-                                const oldText = oldChunks.map(c => c.text).join(' ').trim();
-                                if (oldText && currentLineElement) {
-                                    currentLineElement.innerHTML = `<span style="color:#666">[${formatTime(streamStartTime)}]</span> <span style="color:#00ff88">[${streamSpeaker}]</span> ${oldText}`;
+                                if (splitIdx > 0) {
+                                    // Split: chunks before splitIdx stay with old speaker
+                                    // chunks from splitIdx onwards go to new speaker
+                                    const oldChunks = chunkTextHistory.slice(0, splitIdx);
+                                    const newChunks = chunkTextHistory.slice(splitIdx);
+                                    
+                                    // Finalize old line with old speaker's text
+                                    const oldText = oldChunks.map(c => c.text).join(' ').trim();
+                                    if (oldText && currentLineElement) {
+                                        currentLineElement.innerHTML = `<span style="color:#666">[${formatTime(streamStartTime)}]</span> <span style="color:#00ff88">[${streamSpeaker}]</span> ${oldText}`;
+                                        currentLineElement.classList.remove('live-updating');
+                                    }
+                                    
+                                    // Start new line with new speaker
+                                    currentLineElement = null;
+                                    streamBuffer = newChunks.map(c => c.text).join(' ');
+                                    streamStartTime = newChunks[0]?.time || chunkTime;
+                                    streamSpeaker = currentSpeaker;
+                                    
+                                    // Clear history and start fresh
+                                    chunkTextHistory = newChunks;
+                                    
+                                    // Create new line
+                                    updateOrCreateLiveLine(streamStartTime, streamSpeaker, streamBuffer.trim());
+                                } else {
+                                    // Can't find split point, just do immediate split
                                     currentLineElement.classList.remove('live-updating');
+                                    currentLineElement = null;
+                                    streamBuffer = data.text;
+                                    streamStartTime = chunkTime;
+                                    streamSpeaker = currentSpeaker;
+                                    chunkTextHistory = [];
+                                    updateOrCreateLiveLine(streamStartTime, streamSpeaker, streamBuffer.trim());
                                 }
-                                
-                                // Start new line with new speaker
-                                currentLineElement = null;
-                                streamBuffer = newChunks.map(c => c.text).join(' ');
-                                streamStartTime = newChunks[0]?.time || chunkTime;
-                                streamSpeaker = currentSpeaker;
-                                
-                                // Clear history and start fresh
-                                chunkTextHistory = newChunks;
-                                
-                                // Create new line
-                                updateOrCreateLiveLine(streamStartTime, streamSpeaker, streamBuffer.trim());
                             } else {
-                                // Can't find split point, just do normal split
+                                // Immediate split (no retroactive, just start new line)
                                 currentLineElement.classList.remove('live-updating');
                                 currentLineElement = null;
-                                streamBuffer = '';
+                                streamBuffer = data.text;
                                 streamStartTime = chunkTime;
                                 streamSpeaker = currentSpeaker;
                                 chunkTextHistory = [];
+                                updateOrCreateLiveLine(streamStartTime, streamSpeaker, streamBuffer.trim());
                             }
                         } else {
                             // Normal flow - no speaker change or waiting for stable detection
@@ -2486,7 +2992,7 @@
                     // Update speaker counts
                     if (data.speaker !== 'Unknown') {
                         ytSpeakerCounts[data.speaker] = (ytSpeakerCounts[data.speaker] || 0) + 1;
-                        updateYtSpeakerDisplay();
+                        updateYtSpeakerSummary();
                     }
                 }
             } catch (error) {
@@ -2500,11 +3006,17 @@
             const container = document.getElementById('youtubeTranscript');
             const timeStr = formatTime(timeSeconds);
             // Color: green for enrolled, orange for auto-assigned speakers
-                        const speakerColor = speaker.startsWith('Speaker ') ? '#ffa500' : '#00ff88';
+            const isUnenrolled = speaker.startsWith('#') || speaker.startsWith('Speaker ');
+            const speakerColor = isUnenrolled ? '#ffa500' : '#00ff88';
+            
+            // Make unenrolled speakers clickable
+            const speakerHtml = isUnenrolled 
+                ? `<span style="color:${speakerColor}; cursor:pointer;" class="speaker-label-clickable" onclick="event.stopPropagation(); showEnrollModal('${speaker}')">[${speaker}]</span>`
+                : `<span style="color:${speakerColor}">[${speaker}]</span>`;
             
             if (currentLineElement) {
                 // Update existing line
-                currentLineElement.innerHTML = `<span style="color:#666">[${timeStr}]</span> <span style="color:${speakerColor}">[${speaker}]</span> ${text}`;
+                currentLineElement.innerHTML = `<span style="color:#666">[${timeStr}]</span> ${speakerHtml} ${text}`;
             } else {
                 // Create new line
                 const line = document.createElement('div');
@@ -2512,7 +3024,7 @@
                 line.dataset.time = timeSeconds;
                 line.style.cursor = 'pointer';
                 line.onclick = () => seekToTime(timeSeconds);
-                line.innerHTML = `<span style="color:#666">[${timeStr}]</span> <span style="color:${speakerColor}">[${speaker}]</span> ${text}`;
+                line.innerHTML = `<span style="color:#666">[${timeStr}]</span> ${speakerHtml} ${text}`;
                 container.appendChild(line);
                 currentLineElement = line;
                 
@@ -2696,14 +3208,20 @@
                 const time = line.time || '';
                 const timeSeconds = line.time_seconds || 0;
                 
-                const isUnknown = speaker === 'Unknown';
-                const speakerColor = isUnknown ? '#888' : '#00d4ff';
+                // Determine if speaker is unenrolled (hash or Speaker N)
+                const isUnenrolled = speaker.startsWith('#') || speaker.startsWith('Speaker ') || speaker === 'Unknown';
+                const speakerColor = isUnenrolled ? '#ffa500' : '#00ff88';
+                
+                // Make unenrolled speakers clickable
+                const speakerHtml = isUnenrolled && speaker !== 'Unknown'
+                    ? `<span style="color: ${speakerColor}; font-weight: bold; cursor: pointer;" class="speaker-label-clickable" onclick="event.stopPropagation(); showEnrollModal('${speaker}')">[${speaker}]</span>`
+                    : `<span style="color: ${speakerColor}; font-weight: bold;">[${speaker}]</span>`;
                 
                 html += `<div class="transcript-line" data-time="${timeSeconds}" onclick="seekToTime(${timeSeconds})" style="margin-bottom: 8px; cursor: pointer; padding: 5px; border-radius: 5px; transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="if(!this.style.borderLeft) this.style.background='transparent'">`;
                 if (time) {
                     html += `<span style="color: #666; font-size: 0.8em;">[${time}]</span> `;
                 }
-                html += `<span style="color: ${speakerColor}; font-weight: bold;">[${speaker}]</span> `;
+                html += `${speakerHtml} `;
                 html += `<span style="color: #fff;">${text}</span>`;
                 html += `</div>`;
             }
@@ -2792,7 +3310,7 @@
             } else {
                 modelStatus.classList.remove('active');
                 modelStatusText.textContent = 'Model not loaded';
-                initBtn.textContent = 'Initialize Model';
+                initBtn.textContent = 'Initialize All Models';
                 initBtn.disabled = false;
             }
             
@@ -2828,18 +3346,45 @@
                         select.value = data.parakeet_model_name;
                         window.modelSelectInitialized = true;
                     }
-                } else if (data.parakeet_available) {
-                    transcribeModelEl.textContent = 'Parakeet-MLX (not loaded)';
+                } else if (data.voxtral_loaded) {
+                    const modelShortName = data.voxtral_model_name ? data.voxtral_model_name.split('/').pop() : 'Voxtral';
+                    transcribeModelEl.textContent = modelShortName;
+                    transcribeModelDescEl.textContent = data.voxtral_model_name || 'Mistral ASR';
+                    
+                    // Update dropdown to show current model ONLY on first load
+                    const select = document.getElementById('parakeetModelSelect');
+                    if (select && data.voxtral_model_name && !window.modelSelectInitialized) {
+                        select.value = data.voxtral_model_name;
+                        window.modelSelectInitialized = true;
+                    }
+                } else if (data.parakeet_available || data.voxtral_available) {
+                    transcribeModelEl.textContent = 'ASR (not loaded)';
                     transcribeModelDescEl.textContent = 'Select a model and click Initialize';
                 } else {
                     transcribeModelEl.textContent = 'Not available';
-                    transcribeModelDescEl.textContent = 'Install with: pip install parakeet-mlx';
+                    transcribeModelDescEl.textContent = 'Install with: pip install parakeet-mlx mlx-audio';
                 }
             }
             
             if (deviceNameEl) {
                 const deviceMap = {'cuda': 'NVIDIA GPU (CUDA)', 'mps': 'Apple Silicon GPU (MPS)', 'cpu': 'CPU'};
                 deviceNameEl.textContent = deviceMap[data.device] || data.device;
+            }
+            
+            // Update Pyannote status
+            const pyannoteStatusEl = document.getElementById('pyannoteStatus');
+            const pyannoteIndicatorEl = document.getElementById('pyannoteIndicator');
+            if (pyannoteStatusEl) {
+                if (data.pyannote_loaded) {
+                    pyannoteStatusEl.textContent = 'segmentation-3.0 (Loaded)';
+                    if (pyannoteIndicatorEl) pyannoteIndicatorEl.style.background = '#00ff88';
+                } else if (data.pyannote_available) {
+                    pyannoteStatusEl.textContent = 'Available (Not loaded)';
+                    if (pyannoteIndicatorEl) pyannoteIndicatorEl.style.background = '#ffaa00';
+                } else {
+                    pyannoteStatusEl.textContent = 'Not installed';
+                    if (pyannoteIndicatorEl) pyannoteIndicatorEl.style.background = '#ff4444';
+                }
             }
             
             updateSpeakersList(data.speakers_enrolled || []);
@@ -2869,23 +3414,61 @@
         async function initModel() {
             const btn = document.getElementById('initBtn');
             btn.disabled = true;
-            btn.textContent = 'Loading...';
             
             try {
-                const res = await fetch('/api/init', { method: 'POST' });
-                const data = await res.json();
+                // Step 1: Initialize Speaker ID Model (ECAPA-TDNN)
+                btn.textContent = 'Loading Speaker Model...';
+                const res1 = await fetch('/api/init', { method: 'POST' });
+                const data1 = await res1.json();
                 
-                if (data.success) {
-                    checkStatus();
-                } else {
-                    alert('Failed to initialize model: ' + data.error);
-                    btn.disabled = false;
-                    btn.textContent = 'Initialize Model';
+                if (!data1.success) {
+                    throw new Error('Speaker model: ' + data1.error);
                 }
+                
+                // Step 2: Initialize ASR Model (Parakeet)
+                btn.textContent = 'Loading ASR Model...';
+                const select = document.getElementById('parakeetModelSelect');
+                const modelName = select ? select.value : 'mlx-community/parakeet-tdt-0.6b-v3';
+                
+                const res2 = await fetch('/api/switch-parakeet-model', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model: modelName })
+                });
+                const data2 = await res2.json();
+                
+                if (!data2.success) {
+                    console.warn('ASR model warning: ' + data2.error);
+                    // Don't fail completely, ASR is optional
+                }
+                
+                // Step 3: Initialize Pyannote Segmentation
+                btn.textContent = 'Loading Pyannote...';
+                try {
+                    const res3 = await fetch('/api/init-pyannote', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({})
+                    });
+                    const data3 = await res3.json();
+                    
+                    if (!data3.success) {
+                        console.warn('Pyannote warning: ' + data3.error);
+                        // Don't fail completely, Pyannote is optional
+                    }
+                } catch (pyannoteErr) {
+                    console.warn('Pyannote init skipped:', pyannoteErr.message);
+                }
+                
+                // All done - refresh status
+                checkStatus();
+                btn.textContent = 'Initialize All Models';
+                btn.disabled = false;
+                
             } catch (error) {
                 alert('Error: ' + error.message);
                 btn.disabled = false;
-                btn.textContent = 'Initialize Model';
+                btn.textContent = 'Initialize All Models';
             }
         }
         
@@ -2900,22 +3483,240 @@
             }
         }
         
+        // Enrollment recording state
+        let enrollMethod = 'file';  // 'file' or 'mic'
+        let enrollMediaRecorder = null;
+        let enrollAudioChunks = [];
+        let enrollRecordedBlob = null;
+        let enrollRecordingTimer = null;
+        let enrollRecordStartTime = 0;
+        let enrollAudioContext = null;
+        let enrollScriptProcessor = null;
+        let enrollMediaStream = null;
+        let enrollRawAudioData = [];
+        
+        function setEnrollMethod(method) {
+            enrollMethod = method;
+            const fileBtn = document.getElementById('enrollMethodFile');
+            const micBtn = document.getElementById('enrollMethodMic');
+            const fileSection = document.getElementById('enrollFileSection');
+            const micSection = document.getElementById('enrollMicSection');
+            
+            if (method === 'file') {
+                fileBtn.style.background = '#00ff88';
+                fileBtn.style.color = '#000';
+                micBtn.style.background = '#333';
+                micBtn.style.color = '#fff';
+                fileSection.style.display = 'block';
+                micSection.style.display = 'none';
+            } else {
+                fileBtn.style.background = '#333';
+                fileBtn.style.color = '#fff';
+                micBtn.style.background = '#00ff88';
+                micBtn.style.color = '#000';
+                fileSection.style.display = 'none';
+                micSection.style.display = 'block';
+            }
+        }
+        
+        async function toggleEnrollRecording() {
+            const btn = document.getElementById('enrollRecordBtn');
+            const status = document.getElementById('enrollRecordStatus');
+            const indicator = document.getElementById('enrollRecordingIndicator');
+            const audioPlayer = document.getElementById('enrollRecordedAudio');
+            const vadIndicator = document.getElementById('enrollVadIndicator');
+            
+            if (enrollAudioContext && enrollAudioContext.state !== 'closed') {
+                // Stop recording
+                clearInterval(enrollRecordingTimer);
+                
+                if (enrollScriptProcessor) {
+                    enrollScriptProcessor.disconnect();
+                }
+                if (enrollMediaStream) {
+                    enrollMediaStream.getTracks().forEach(track => track.stop());
+                }
+                
+                // Convert raw audio to WAV blob
+                if (enrollRawAudioData.length > 0) {
+                    const mergedAudio = mergeFloat32Arrays(enrollRawAudioData);
+                    enrollRecordedBlob = float32ToWavBlob(mergedAudio, 16000);
+                    
+                    const url = URL.createObjectURL(enrollRecordedBlob);
+                    audioPlayer.src = url;
+                    audioPlayer.style.display = 'block';
+                    
+                    const duration = mergedAudio.length / 16000;
+                    status.textContent = `Recording saved (${duration.toFixed(1)}s). Click Enroll Speaker to submit.`;
+                    status.style.color = '#00ff88';
+                } else {
+                    status.textContent = 'No audio recorded. Try again.';
+                    status.style.color = '#ff4444';
+                }
+                
+                enrollAudioContext.close();
+                enrollAudioContext = null;
+                btn.innerHTML = '🎤 Start Recording';
+                btn.style.background = '#ff4444';
+                indicator.style.display = 'none';
+                if (vadIndicator) vadIndicator.style.background = '#333';
+                
+            } else {
+                // Start recording
+                try {
+                    enrollMediaStream = await navigator.mediaDevices.getUserMedia({ 
+                        audio: { 
+                            sampleRate: 16000,
+                            channelCount: 1,
+                            echoCancellation: true,
+                            noiseSuppression: true
+                        } 
+                    });
+                    
+                    enrollAudioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+                    const source = enrollAudioContext.createMediaStreamSource(enrollMediaStream);
+                    enrollScriptProcessor = enrollAudioContext.createScriptProcessor(4096, 1, 1);
+                    
+                    enrollRawAudioData = [];
+                    
+                    enrollScriptProcessor.onaudioprocess = (e) => {
+                        const inputData = e.inputBuffer.getChannelData(0);
+                        
+                        // Calculate RMS for VAD indicator
+                        let sumSquares = 0;
+                        for (let i = 0; i < inputData.length; i++) {
+                            sumSquares += inputData[i] * inputData[i];
+                        }
+                        const rms = Math.sqrt(sumSquares / inputData.length);
+                        const rmsDb = 20 * Math.log10(rms + 1e-10);
+                        
+                        // VAD threshold: -40dB (speech typically > -30dB)
+                        const isSpeech = rmsDb > -40;
+                        
+                        if (vadIndicator) {
+                            vadIndicator.style.background = isSpeech ? '#00ff88' : '#333';
+                        }
+                        
+                        // Store audio (resampled to 16kHz if needed)
+                        const resampled = resampleTo16k(inputData, enrollAudioContext.sampleRate);
+                        enrollRawAudioData.push(new Float32Array(resampled));
+                    };
+                    
+                    source.connect(enrollScriptProcessor);
+                    enrollScriptProcessor.connect(enrollAudioContext.destination);
+                    
+                    enrollRecordStartTime = Date.now();
+                    btn.innerHTML = '⏹ Stop Recording';
+                    btn.style.background = '#333';
+                    indicator.style.display = 'block';
+                    status.textContent = 'Recording...';
+                    status.style.color = '#ff4444';
+                    
+                    // Update timer
+                    enrollRecordingTimer = setInterval(() => {
+                        const elapsed = (Date.now() - enrollRecordStartTime) / 1000;
+                        document.getElementById('enrollRecordTime').textContent = elapsed.toFixed(1);
+                    }, 100);
+                    
+                } catch (err) {
+                    alert('Could not access microphone: ' + err.message);
+                }
+            }
+        }
+        
+        // Helper: Resample audio to 16kHz
+        function resampleTo16k(audioData, sourceSampleRate) {
+            if (sourceSampleRate === 16000) return audioData;
+            const ratio = sourceSampleRate / 16000;
+            const newLength = Math.round(audioData.length / ratio);
+            const result = new Float32Array(newLength);
+            for (let i = 0; i < newLength; i++) {
+                result[i] = audioData[Math.round(i * ratio)];
+            }
+            return result;
+        }
+        
+        // Helper: Merge Float32Arrays
+        function mergeFloat32Arrays(arrays) {
+            const totalLength = arrays.reduce((sum, arr) => sum + arr.length, 0);
+            const result = new Float32Array(totalLength);
+            let offset = 0;
+            for (const arr of arrays) {
+                result.set(arr, offset);
+                offset += arr.length;
+            }
+            return result;
+        }
+        
+        // Helper: Convert Float32 to WAV Blob
+        function float32ToWavBlob(audioData, sampleRate) {
+            const buffer = new ArrayBuffer(44 + audioData.length * 2);
+            const view = new DataView(buffer);
+            
+            // WAV header
+            const writeString = (offset, str) => {
+                for (let i = 0; i < str.length; i++) {
+                    view.setUint8(offset + i, str.charCodeAt(i));
+                }
+            };
+            
+            writeString(0, 'RIFF');
+            view.setUint32(4, 36 + audioData.length * 2, true);
+            writeString(8, 'WAVE');
+            writeString(12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, 1, true);
+            view.setUint16(22, 1, true);
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, sampleRate * 2, true);
+            view.setUint16(32, 2, true);
+            view.setUint16(34, 16, true);
+            writeString(36, 'data');
+            view.setUint32(40, audioData.length * 2, true);
+            
+            // Audio data
+            let offset = 44;
+            for (let i = 0; i < audioData.length; i++) {
+                const s = Math.max(-1, Math.min(1, audioData[i]));
+                view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+                offset += 2;
+            }
+            
+            return new Blob([buffer], { type: 'audio/wav' });
+        }
+        
         async function enrollSpeaker(event) {
             event.preventDefault();
             
             const name = document.getElementById('enrollName').value.trim();
-            const file = document.getElementById('enrollFile').files[0];
             const resultBox = document.getElementById('enrollResult');
             const loading = document.getElementById('enrollLoading');
             
-            if (!name || !file) {
-                alert('Please provide both name and audio file');
+            if (!name) {
+                alert('Please provide a speaker name');
                 return;
+            }
+            
+            let audioData;
+            if (enrollMethod === 'file') {
+                const file = document.getElementById('enrollFile').files[0];
+                if (!file) {
+                    alert('Please select an audio file');
+                    return;
+                }
+                audioData = file;
+            } else {
+                // Microphone recording
+                if (!enrollRecordedBlob) {
+                    alert('Please record your voice first');
+                    return;
+                }
+                audioData = new File([enrollRecordedBlob], 'enrollment.wav', { type: 'audio/wav' });
             }
             
             const formData = new FormData();
             formData.append('name', name);
-            formData.append('audio', file);
+            formData.append('audio', audioData);
             
             loading.classList.add('show');
             resultBox.classList.remove('show');
@@ -2938,6 +3739,13 @@
                     document.getElementById('enrollForm').reset();
                     document.getElementById('enrollFileLabel').innerHTML = '<span>Click or drag audio file here</span>';
                     document.getElementById('enrollFileLabel').classList.remove('has-file');
+                    
+                    // Reset mic recording state
+                    enrollRecordedBlob = null;
+                    document.getElementById('enrollRecordedAudio').style.display = 'none';
+                    document.getElementById('enrollRecordStatus').textContent = 'Ready to record';
+                    document.getElementById('enrollRecordStatus').style.color = '#888';
+                    
                     checkStatus();
                 } else {
                     resultBox.className = 'result-box show error';
@@ -3100,6 +3908,50 @@
                     }
                 }
                 
+                async function initializePyannote() {
+                    const statusDiv = document.getElementById('pyannoteInitStatus');
+                    const btn = document.getElementById('initPyannoteBtn');
+                    
+                    // Show loading state
+                    btn.disabled = true;
+                    btn.innerHTML = '⏳ Initializing Pyannote...';
+                    statusDiv.style.display = 'block';
+                    statusDiv.style.background = 'rgba(255,170,0,0.2)';
+                    statusDiv.style.color = '#ffaa00';
+                    statusDiv.innerHTML = '<strong>Loading Pyannote segmentation-3.0...</strong><br>Using token from .env file. This may take a minute for first-time download.';
+                    
+                    try {
+                        const res = await fetch('/api/init-pyannote', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({})  // Token loaded from .env on server
+                        });
+                        const data = await res.json();
+                        
+                        if (data.success) {
+                            statusDiv.style.background = 'rgba(0,255,136,0.2)';
+                            statusDiv.style.color = '#00ff88';
+                            statusDiv.innerHTML = '<strong>✅ Pyannote loaded!</strong><br>Hybrid speaker change detection enabled.';
+                            checkStatus(); // Refresh status
+                        } else {
+                            statusDiv.style.background = 'rgba(255,68,68,0.2)';
+                            statusDiv.style.color = '#ff4444';
+                            let errorMsg = data.error || 'Unknown error';
+                            if (data.instructions) {
+                                errorMsg += '<br><br><strong>Instructions:</strong><br>' + data.instructions.join('<br>');
+                            }
+                            statusDiv.innerHTML = `<strong>❌ Failed to load Pyannote</strong><br>${errorMsg}`;
+                        }
+                    } catch (error) {
+                        statusDiv.style.background = 'rgba(255,68,68,0.2)';
+                        statusDiv.style.color = '#ff4444';
+                        statusDiv.innerHTML = `<strong>❌ Error</strong><br>${error.message}`;
+                    } finally {
+                        btn.disabled = false;
+                        btn.innerHTML = '🚀 Initialize Pyannote';
+                    }
+                }
+                
                 async function clearAllSpeakers() {
             if (!confirm('Are you sure you want to delete all enrolled speakers?')) return;
             
@@ -3116,6 +3968,157 @@
                 alert('Error: ' + error.message);
             }
         }
+        
+        // =============================================
+        // Speaker Enrollment from Hash (Fingerprint)
+        // =============================================
+        let pendingEnrollHash = null;
+        
+        function showEnrollModal(speakerHash) {
+            pendingEnrollHash = speakerHash.replace('#', '');
+            document.getElementById('enrollHashLabel').textContent = '#' + pendingEnrollHash;
+            document.getElementById('newSpeakerName').value = '';
+            document.getElementById('enrollModal').style.display = 'flex';
+            
+            // Load enrolled speakers for the dropdown
+            loadEnrolledSpeakersForModal();
+        }
+        
+        function hideEnrollModal() {
+            document.getElementById('enrollModal').style.display = 'none';
+            pendingEnrollHash = null;
+        }
+        
+        async function loadEnrolledSpeakersForModal() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                const list = document.getElementById('existingSpeakerList');
+                list.innerHTML = '';
+                
+                if (data.speakers_enrolled && data.speakers_enrolled.length > 0) {
+                    data.speakers_enrolled.forEach(speaker => {
+                        const btn = document.createElement('button');
+                        btn.className = 'enrolled-speaker-btn';
+                        btn.textContent = speaker.name;
+                        btn.onclick = () => enrollToExisting(speaker.name);
+                        list.appendChild(btn);
+                    });
+                } else {
+                    list.innerHTML = '<div style="color: #888; padding: 10px;">No enrolled speakers yet</div>';
+                }
+            } catch (e) {
+                console.error('Failed to load speakers:', e);
+            }
+        }
+        
+        async function enrollAsNew() {
+            const name = document.getElementById('newSpeakerName').value.trim();
+            if (!name) {
+                alert('Please enter a name');
+                return;
+            }
+            await enrollFromHash(pendingEnrollHash, name, false);
+        }
+        
+        async function enrollToExisting(name) {
+            await enrollFromHash(pendingEnrollHash, name, true);
+        }
+        
+        async function enrollFromHash(hash, name, merge) {
+            try {
+                const res = await fetch('/api/enroll-from-hash', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ hash: hash, name: name, merge: merge })
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    hideEnrollModal();
+                    checkStatus();
+                    
+                    // Update all transcript lines with this hash to show the new name
+                    updateTranscriptSpeakerLabels('#' + hash, name);
+                    
+                    alert(data.message);
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (e) {
+                alert('Error: ' + e.message);
+            }
+        }
+        
+        function updateTranscriptSpeakerLabels(oldLabel, newName) {
+            // Update youtubeTranscriptLines array
+            youtubeTranscriptLines.forEach(line => {
+                if (line.speaker === oldLabel) {
+                    line.speaker = newName;
+                }
+            });
+            
+            // Update DOM elements
+            const container = document.getElementById('youtubeTranscript');
+            const lines = container.querySelectorAll('.transcript-line');
+            lines.forEach(line => {
+                const speakerSpan = line.querySelector('span:nth-child(2)');
+                if (speakerSpan && speakerSpan.textContent.includes(oldLabel)) {
+                    speakerSpan.innerHTML = `[${newName}]`;
+                    speakerSpan.style.color = '#00ff88';  // Green for enrolled
+                }
+            });
+        }
     </script>
+    
+    <!-- Speaker Enrollment Modal -->
+    <div id="enrollModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center;">
+        <div style="background: #1a1a2e; border-radius: 15px; padding: 25px; max-width: 400px; width: 90%; max-height: 80vh; overflow-y: auto;">
+            <h3 style="color: #00d4ff; margin: 0 0 15px 0;">👤 Enroll Speaker</h3>
+            <p style="color: #888; margin-bottom: 15px;">Assign fingerprint <span id="enrollHashLabel" style="color: #ffa500; font-weight: bold;"></span> to:</p>
+            
+            <!-- Create New Speaker -->
+            <div style="margin-bottom: 20px; padding: 15px; background: rgba(0,255,136,0.1); border-radius: 10px; border: 1px solid rgba(0,255,136,0.3);">
+                <label style="color: #00ff88; font-size: 0.9em; display: block; margin-bottom: 8px;">Create New Speaker</label>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="newSpeakerName" placeholder="Enter name..." style="flex: 1; padding: 10px; border: 1px solid #333; border-radius: 8px; background: #0d0d1a; color: #fff;">
+                    <button onclick="enrollAsNew()" style="padding: 10px 15px; background: #00ff88; color: #000; border: none; border-radius: 8px; cursor: pointer; font-weight: bold;">Create</button>
+                </div>
+            </div>
+            
+            <!-- Or Assign to Existing -->
+            <div style="margin-bottom: 20px;">
+                <label style="color: #888; font-size: 0.9em; display: block; margin-bottom: 8px;">Or merge with existing speaker:</label>
+                <div id="existingSpeakerList" style="display: flex; flex-wrap: wrap; gap: 8px; max-height: 150px; overflow-y: auto; padding: 5px;"></div>
+            </div>
+            
+            <button onclick="hideEnrollModal()" style="width: 100%; padding: 12px; background: #333; color: #fff; border: none; border-radius: 8px; cursor: pointer;">Cancel</button>
+        </div>
+    </div>
+    
+    <style>
+        .enrolled-speaker-btn {
+            padding: 8px 15px;
+            background: rgba(0,212,255,0.2);
+            border: 1px solid #00d4ff;
+            border-radius: 20px;
+            color: #00d4ff;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.2s;
+        }
+        .enrolled-speaker-btn:hover {
+            background: #00d4ff;
+            color: #000;
+        }
+        .speaker-label-clickable {
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .speaker-label-clickable:hover {
+            text-decoration: underline;
+            filter: brightness(1.3);
+        }
+    </style>
 </body>
 </html>

@@ -1,7 +1,8 @@
 flask>=2.0
 torch
 torchaudio
-transformers
+transformers==5.0.0rc3
+tokenizers
 librosa
 soundfile
 numpy
@@ -11,5 +12,6 @@ pydub
 noisereduce
 mlx
 parakeet-mlx
+mlx-audio
 speechbrain
 yt-dlp
