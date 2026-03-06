@@ -8,3 +8,9 @@ uploads
 .claude-flow
 CLAUDE.md
 .mcp.json
+.mcp.log
+node_modules
+package-lock.json
+yarn.lock
+package.json
+.swarm
