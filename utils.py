@@ -11,6 +11,56 @@ from pydub import AudioSegment
 
 from config import ALLOWED_EXTENSIONS
 
+# Speaker name validation constants
+MAX_SPEAKER_NAME_LENGTH = 50
+ALLOWED_NAME_CHARS = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 _-\'')
+
+
+def sanitize_speaker_name(name):
+    """Sanitize and validate speaker name.
+    
+    Args:
+        name: Raw speaker name input
+        
+    Returns:
+        tuple: (sanitized_name, error_message)
+               If valid, error_message is None
+               If invalid, sanitized_name is None
+    """
+    if not name:
+        return None, 'Speaker name is required'
+    
+    # Strip whitespace
+    name = name.strip()
+    
+    if not name:
+        return None, 'Speaker name cannot be empty'
+    
+    # Check length
+    if len(name) > MAX_SPEAKER_NAME_LENGTH:
+        return None, f'Speaker name too long (max {MAX_SPEAKER_NAME_LENGTH} characters)'
+    
+    if len(name) < 2:
+        return None, 'Speaker name must be at least 2 characters'
+    
+    # Check for invalid characters
+    invalid_chars = set(name) - ALLOWED_NAME_CHARS
+    if invalid_chars:
+        return None, f'Speaker name contains invalid characters: {", ".join(repr(c) for c in invalid_chars)}'
+    
+    # Prevent HTML/script injection patterns
+    dangerous_patterns = ['<', '>', 'script', 'javascript:', 'onclick', 'onerror', 'onload']
+    name_lower = name.lower()
+    for pattern in dangerous_patterns:
+        if pattern in name_lower:
+            return None, f'Speaker name contains disallowed pattern'
+    
+    # Collapse multiple spaces
+    import re
+    name = re.sub(r'\s+', ' ', name)
+    
+    return name, None
+
 
 def allowed_file(filename):
     """Check if file extension is allowed."""

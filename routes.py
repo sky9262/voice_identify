@@ -29,7 +29,8 @@ from utils import (
     embedding_to_hash,
     convert_webm_to_wav,
     extract_name_from_text,
-    extract_youtube_video_id
+    extract_youtube_video_id,
+    sanitize_speaker_name
 )
 from audio import (
     reduce_noise,
@@ -237,10 +238,12 @@ def enroll_speaker():
         return jsonify({'success': False, 'error': 'No audio file provided'}), 400
     
     file = request.files['audio']
-    name = request.form.get('name', '').strip()
+    raw_name = request.form.get('name', '')
     
-    if not name:
-        return jsonify({'success': False, 'error': 'Speaker name is required'}), 400
+    # Validate and sanitize speaker name
+    name, error = sanitize_speaker_name(raw_name)
+    if error:
+        return jsonify({'success': False, 'error': error}), 400
     
     if file.filename == '':
         return jsonify({'success': False, 'error': 'No file selected'}), 400
@@ -301,14 +304,16 @@ def enroll_from_hash():
     
     data = request.get_json()
     speaker_hash = data.get('hash', '').strip().upper()
-    name = data.get('name', '').strip()
+    raw_name = data.get('name', '')
     merge_with_existing = data.get('merge', False)
     
     if not speaker_hash:
         return jsonify({'success': False, 'error': 'Speaker hash is required'}), 400
     
-    if not name:
-        return jsonify({'success': False, 'error': 'Speaker name is required'}), 400
+    # Validate and sanitize speaker name
+    name, error = sanitize_speaker_name(raw_name)
+    if error:
+        return jsonify({'success': False, 'error': error}), 400
     
     success, message, update_count = enroll_from_session_hash(speaker_hash, name, merge_with_existing)
     
@@ -475,9 +480,12 @@ def enroll_live():
     if 'audio' not in request.files:
         return jsonify({'success': False, 'error': 'No audio data'}), 400
     
-    name = request.form.get('name', '').strip()
-    if not name:
-        return jsonify({'success': False, 'error': 'Speaker name is required'}), 400
+    raw_name = request.form.get('name', '')
+    
+    # Validate and sanitize speaker name
+    name, error = sanitize_speaker_name(raw_name)
+    if error:
+        return jsonify({'success': False, 'error': error}), 400
     
     noise_level = int(request.form.get('noise_level', 80))
     
@@ -569,9 +577,12 @@ def rename_speaker_route(name):
     if name not in speaker_memory:
         return jsonify({'success': False, 'error': 'Speaker not found'}), 404
     
-    new_name = request.json.get('new_name', '').strip() if request.json else ''
-    if not new_name:
-        return jsonify({'success': False, 'error': 'New name is required'}), 400
+    raw_new_name = request.json.get('new_name', '') if request.json else ''
+    
+    # Validate and sanitize new speaker name
+    new_name, error = sanitize_speaker_name(raw_new_name)
+    if error:
+        return jsonify({'success': False, 'error': error}), 400
     
     success, error = rename_speaker(name, new_name)
     
