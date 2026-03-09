@@ -62,6 +62,10 @@ except ImportError as e:
 except Exception as e:
     print(f"Warning: mlx-audio error: {e}")
 
+# VibeVoice-ASR (Microsoft long-form ASR with diarization)
+# Uses same mlx-audio backend as Voxtral
+VIBEVOICE_AVAILABLE = VOXTRAL_AVAILABLE  # Same dependency
+
 # Pyannote Speaker Segmentation (for accurate speaker change detection)
 PYANNOTE_AVAILABLE = False
 PyannoteModel = None
@@ -82,6 +86,7 @@ except Exception as e:
 ecapa_model = None  # SpeechBrain ECAPA-TDNN
 parakeet_model = None
 voxtral_model = None
+vibevoice_model = None  # VibeVoice-ASR for post-processing
 pyannote_segmentation = None
 current_parakeet_model_name = "mlx-community/parakeet-tdt-1.1b"  # Track current model
 current_voxtral_model_name = None
@@ -419,6 +424,140 @@ def transcribe_with_voxtral(audio_path):
         print(f"Voxtral transcription error: {e}")
         traceback.print_exc()
         return None
+
+
+# =============================================================================
+# VibeVoice-ASR Functions (Post-Process with Diarization)
+# =============================================================================
+
+VIBEVOICE_MODEL_ID = "mlx-community/VibeVoice-ASR-4bit"
+
+def init_vibevoice():
+    """Initialize VibeVoice-ASR model for post-processing."""
+    global vibevoice_model
+    
+    if not VIBEVOICE_AVAILABLE:
+        log.error("VibeVoice not available - mlx-audio not installed")
+        return False
+    
+    if vibevoice_model is not None:
+        log.info("VibeVoice model already loaded")
+        return True
+    
+    try:
+        log.info(f"Loading VibeVoice-ASR model: {VIBEVOICE_MODEL_ID}")
+        vibevoice_model = voxtral_load_model(VIBEVOICE_MODEL_ID)
+        log.info("VibeVoice-ASR model loaded successfully")
+        return True
+    except Exception as e:
+        log.error(f"Failed to load VibeVoice model: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def transcribe_with_vibevoice(audio_path, context="", enable_sampling=False, temperature=0.0, top_p=1.0):
+    """
+    Transcribe audio with VibeVoice-ASR via subprocess.
+    Runs in a separate process to isolate native code crashes (segfaults).
+    
+    Args:
+        audio_path: Path to audio file
+        context: Custom hotwords/terms for better recognition
+        enable_sampling: Enable stochastic sampling
+        temperature: Sampling temperature (0-2)
+        top_p: Nucleus sampling parameter (0-1)
+    
+    Returns:
+        List of dicts with Start, End, Speaker, Content
+        Or None on error
+    """
+    import subprocess
+    import json
+    import os
+    import sys
+    import time
+    
+    if not VIBEVOICE_AVAILABLE:
+        log.error("VibeVoice not available")
+        return None
+    
+    try:
+        log.info(f"VibeVoice transcribing (subprocess): {audio_path}")
+        start_time = time.time()
+        
+        # Build command for worker script
+        worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'vibevoice_worker.py')
+        output_path = os.path.splitext(audio_path)[0]
+        
+        cmd = [sys.executable, worker_path, audio_path, output_path]
+        if context:
+            cmd.append(context)
+        
+        # Run in subprocess with timeout (10 min max)
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=600,
+            cwd=os.path.dirname(os.path.abspath(__file__))
+        )
+        
+        # Log stderr (model loading progress, etc.)
+        if result.stderr:
+            for line in result.stderr.strip().split('\n'):
+                if line.strip():
+                    log.info(f"VibeVoice worker: {line.strip()}")
+        
+        elapsed = time.time() - start_time
+        
+        if result.returncode != 0:
+            log.error(f"VibeVoice worker crashed (exit code {result.returncode}) after {elapsed:.2f}s")
+            if result.returncode == -11:  # SIGSEGV
+                log.error("Segmentation fault in VibeVoice worker (mlx native code crash)")
+            return None
+        
+        # Parse stdout JSON
+        stdout = result.stdout.strip()
+        if not stdout:
+            log.error("VibeVoice worker produced no output")
+            return None
+        
+        # Get the last line of stdout (the JSON result)
+        last_line = stdout.split('\n')[-1]
+        data = json.loads(last_line)
+        
+        if 'error' in data:
+            log.error(f"VibeVoice worker error: {data['error']}")
+            return None
+        
+        segments = data.get('segments', [])
+        log.info(f"VibeVoice transcription completed in {elapsed:.2f}s ({len(segments)} segments)")
+        
+        return segments if segments else None
+        
+    except subprocess.TimeoutExpired:
+        log.error("VibeVoice transcription timed out (10 min limit)")
+        return None
+    except Exception as e:
+        import traceback
+        log.error(f"VibeVoice transcription error: {e}")
+        traceback.print_exc()
+        return None
+
+
+def is_vibevoice_loaded():
+    """Check if VibeVoice model is loaded."""
+    return vibevoice_model is not None
+
+
+def get_vibevoice_status():
+    """Get VibeVoice model status."""
+    return {
+        'available': VIBEVOICE_AVAILABLE,
+        'loaded': vibevoice_model is not None,
+        'model_id': VIBEVOICE_MODEL_ID if vibevoice_model else None
+    }
 
 
 def transcribe_audio(audio_path):

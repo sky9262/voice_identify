@@ -60,11 +60,16 @@ from models import (
     PARAKEET_AVAILABLE,
     VOXTRAL_AVAILABLE,
     PYANNOTE_AVAILABLE,
+    VIBEVOICE_AVAILABLE,
     parakeet_model,
     voxtral_model,
     pyannote_segmentation,
     current_parakeet_model_name,
-    current_voxtral_model_name
+    current_voxtral_model_name,
+    init_vibevoice,
+    transcribe_with_vibevoice,
+    is_vibevoice_loaded,
+    get_vibevoice_status
 )
 from speakers import (
     get_speaker_memory,
@@ -103,6 +108,14 @@ from youtube import (
 
 # Create blueprint
 api = Blueprint('api', __name__)
+
+# =============================================================================
+# Session Audio Recording (for VibeVoice post-processing)
+# =============================================================================
+
+session_audio_chunks = []  # List of (audio_data, timestamp) tuples
+session_audio_sample_rate = 16000
+session_start_time = None
 
 
 # =============================================================================
@@ -169,6 +182,8 @@ def status():
         'asr_model_name': active_model,
         'pyannote_available': PYANNOTE_AVAILABLE,
         'pyannote_loaded': is_pyannote_loaded(),
+        'vibevoice_available': VIBEVOICE_AVAILABLE,
+        'vibevoice_loaded': is_vibevoice_loaded(),
         'device': device,
         'speakers_enrolled': speakers_with_hash,
         'speaker_count': len(speaker_memory)
@@ -221,6 +236,33 @@ def initialize_pyannote():
                 ]
             }), 400
     except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@api.route('/init-vibevoice', methods=['POST'])
+def initialize_vibevoice():
+    """Initialize VibeVoice-ASR model for post-processing."""
+    if not VIBEVOICE_AVAILABLE:
+        return jsonify({
+            'success': False, 
+            'error': 'VibeVoice not available - mlx-audio not installed'
+        }), 400
+    
+    try:
+        success = init_vibevoice()
+        if success:
+            return jsonify({
+                'success': True,
+                'message': 'VibeVoice-ASR model loaded successfully',
+                'model': 'mlx-community/VibeVoice-ASR-4bit'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to load VibeVoice-ASR model'
+            }), 400
+    except Exception as e:
+        log.error(f"Error initializing VibeVoice: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -632,8 +674,247 @@ def clear_speakers():
 @api.route('/reset-session-speakers', methods=['POST'])
 def reset_session_speakers():
     """Reset session speaker clustering for a fresh start."""
+    global session_audio_chunks, session_start_time
     reset_session()
+    # Also clear session audio recording
+    session_audio_chunks = []
+    session_start_time = None
     return jsonify({'success': True})
+
+
+# =============================================================================
+# VibeVoice Post-Process Routes
+# =============================================================================
+
+def map_vibevoice_speakers_to_enrolled(segments, full_audio_path, sr=16000):
+    """
+    Map VibeVoice speaker numbers (0, 1, 2...) to enrolled speaker names.
+    Uses ECAPA embeddings to find best match for each speaker.
+    
+    Returns dict: {0: "akash", 1: "#F31D04", ...}
+    """
+    if not segments:
+        return {}
+    
+    speaker_memory = get_speaker_memory()
+    speaker_mapping = {}
+    
+    # Load full audio
+    try:
+        full_wav, _ = librosa.load(full_audio_path, sr=sr, mono=True)
+    except Exception as e:
+        print(f"Error loading audio for speaker mapping: {e}")
+        return {}
+    
+    # Group segments by speaker number
+    speaker_segments = {}
+    for seg in segments:
+        spk_num = seg.get('Speaker', 0)
+        if spk_num not in speaker_segments:
+            speaker_segments[spk_num] = []
+        speaker_segments[spk_num].append(seg)
+    
+    # For each unique speaker, extract representative audio and match
+    for spk_num, segs in speaker_segments.items():
+        # Get longest segment for this speaker (more reliable embedding)
+        best_seg = max(segs, key=lambda s: s.get('End', 0) - s.get('Start', 0))
+        start_sec = best_seg.get('Start', 0)
+        end_sec = best_seg.get('End', 0)
+        
+        # Extract audio segment
+        start_sample = int(start_sec * sr)
+        end_sample = int(end_sec * sr)
+        
+        if end_sample <= start_sample or end_sample > len(full_wav):
+            # Fallback: use first 3 seconds of this speaker's audio
+            start_sample = 0
+            end_sample = min(3 * sr, len(full_wav))
+        
+        segment_wav = full_wav[start_sample:end_sample]
+        
+        if len(segment_wav) < sr * 0.5:  # Less than 0.5 seconds
+            speaker_mapping[spk_num] = f"Speaker{spk_num}"
+            continue
+        
+        try:
+            # Get embedding for this speaker segment
+            with processing_lock:
+                segment_embedding = extract_embedding(segment_wav, sr)
+            
+            if hasattr(segment_embedding, 'cpu'):
+                seg_emb_np = segment_embedding.cpu().numpy().flatten()
+            else:
+                seg_emb_np = np.array(segment_embedding).flatten()
+            
+            # Compare with enrolled speakers
+            best_name = None
+            best_sim = 0.0
+            
+            for name, enrolled_emb in speaker_memory.items():
+                if hasattr(enrolled_emb, 'cpu'):
+                    enrolled_np = enrolled_emb.cpu().numpy().flatten()
+                else:
+                    enrolled_np = np.array(enrolled_emb).flatten()
+                
+                sim = float(np.dot(seg_emb_np, enrolled_np) / 
+                           (np.linalg.norm(seg_emb_np) * np.linalg.norm(enrolled_np) + 1e-8))
+                
+                if sim > best_sim:
+                    best_sim = sim
+                    best_name = name
+            
+            # Use enrolled name if similarity is high enough, otherwise use hash
+            if best_name and best_sim >= 0.35:
+                speaker_mapping[spk_num] = best_name
+                print(f"Speaker{spk_num} -> {best_name} (sim={best_sim:.3f})")
+            else:
+                # Generate hash from embedding
+                speaker_hash = embedding_to_hash(seg_emb_np, length=6)
+                speaker_mapping[spk_num] = f"#{speaker_hash}"
+                print(f"Speaker{spk_num} -> #{speaker_hash} (best_sim={best_sim:.3f})")
+                
+        except Exception as e:
+            print(f"Error mapping speaker {spk_num}: {e}")
+            speaker_mapping[spk_num] = f"Speaker{spk_num}"
+    
+    return speaker_mapping
+
+
+@api.route('/post-process', methods=['POST'])
+def post_process():
+    """
+    Run VibeVoice post-processing on recorded session audio.
+    Combines all chunks, transcribes with diarization, maps speakers.
+    """
+    global session_audio_chunks
+    
+    if not session_audio_chunks:
+        return jsonify({
+            'success': False,
+            'error': 'No audio recorded. Start playback first.'
+        }), 400
+    
+    # Get settings from request
+    data = request.get_json() or {}
+    context = data.get('context', '')
+    enable_sampling = data.get('enable_sampling', False)
+    temperature = float(data.get('temperature', 0.0))
+    top_p = float(data.get('top_p', 1.0))
+    
+    try:
+        import time
+        start_time = time.time()
+        
+        # Combine all audio chunks into single WAV
+        all_audio = np.concatenate([chunk[0] for chunk in session_audio_chunks])
+        total_duration = len(all_audio) / session_audio_sample_rate
+        
+        print(f"Post-process: {len(session_audio_chunks)} chunks, {total_duration:.2f}s total")
+        
+        # Save combined audio to temp file
+        combined_path = os.path.join(UPLOAD_FOLDER, 'session_combined.wav')
+        sf.write(combined_path, all_audio, session_audio_sample_rate)
+        
+        # Initialize VibeVoice if needed
+        if not is_vibevoice_loaded():
+            print("Initializing VibeVoice model...")
+            if not init_vibevoice():
+                return jsonify({
+                    'success': False,
+                    'error': 'Failed to initialize VibeVoice model'
+                }), 500
+        
+        # Run VibeVoice transcription
+        segments = transcribe_with_vibevoice(
+            combined_path,
+            context=context,
+            enable_sampling=enable_sampling,
+            temperature=temperature,
+            top_p=top_p
+        )
+        
+        if not segments:
+            return jsonify({
+                'success': False,
+                'error': 'VibeVoice transcription returned no results'
+            }), 500
+        
+        # Map speaker numbers to enrolled names
+        speaker_mapping = map_vibevoice_speakers_to_enrolled(
+            segments, 
+            combined_path, 
+            session_audio_sample_rate
+        )
+        
+        # Apply speaker mapping to segments
+        for seg in segments:
+            spk_num = seg.get('Speaker', 0)
+            seg['Speaker'] = speaker_mapping.get(spk_num, f"Speaker{spk_num}")
+        
+        elapsed = time.time() - start_time
+        
+        return jsonify({
+            'success': True,
+            'segments': segments,
+            'stats': {
+                'processing_time': round(elapsed, 2),
+                'audio_duration': round(total_duration, 2),
+                'chunk_count': len(session_audio_chunks),
+                'speaker_mapping': speaker_mapping
+            }
+        })
+        
+    except Exception as e:
+        import traceback
+        print(f"Post-process error: {e}")
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@api.route('/post-process/status', methods=['GET'])
+def post_process_status():
+    """Get post-process session status."""
+    vibevoice_status = get_vibevoice_status()
+    
+    chunk_count = len(session_audio_chunks)
+    if chunk_count > 0:
+        total_samples = sum(len(chunk[0]) for chunk in session_audio_chunks)
+        duration = total_samples / session_audio_sample_rate
+    else:
+        duration = 0
+    
+    return jsonify({
+        'success': True,
+        'has_audio': chunk_count > 0,
+        'chunk_count': chunk_count,
+        'duration': round(duration, 2),
+        'vibevoice': vibevoice_status
+    })
+
+
+@api.route('/init-vibevoice', methods=['POST'])
+def init_vibevoice_route():
+    """Initialize VibeVoice model."""
+    if not VIBEVOICE_AVAILABLE:
+        return jsonify({
+            'success': False,
+            'error': 'VibeVoice not available - mlx-audio not installed'
+        }), 400
+    
+    success = init_vibevoice()
+    if success:
+        return jsonify({
+            'success': True,
+            'message': 'VibeVoice model initialized'
+        })
+    else:
+        return jsonify({
+            'success': False,
+            'error': 'Failed to initialize VibeVoice model'
+        }), 500
 
 
 # =============================================================================
@@ -742,6 +1023,14 @@ def process_streaming():
                 'is_sentence_end': False,
                 'speaker_changed': False
             })
+        
+        # Record audio chunk for post-processing
+        global session_audio_chunks, session_start_time
+        import time
+        if session_start_time is None:
+            session_start_time = time.time()
+        current_time = time.time() - session_start_time
+        session_audio_chunks.append((wav.copy(), current_time))
         
         # Use lock for GPU operations to prevent race condition
         with processing_lock:
@@ -996,6 +1285,52 @@ def auto_enroll():
             'speaker_count': len(speaker_memory)
         })
     except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# =============================================================================
+# Sample Audio Route
+# =============================================================================
+
+@api.route('/load-sample', methods=['GET'])
+def load_sample():
+    """Load sample.wav for testing purposes."""
+    import numpy as np
+    
+    # Use sample.wav from static folder
+    sample_path = os.path.join('static', 'sample.wav')
+    
+    if not os.path.exists(sample_path):
+        return jsonify({'success': False, 'error': 'Sample file not found'}), 404
+    
+    try:
+        # Load audio to get duration and waveform
+        audio, sr = librosa.load(sample_path, sr=16000, mono=True)
+        duration = len(audio) / sr
+        
+        # Generate waveform data for visualization
+        samples_per_pixel = max(1, len(audio) // 1000)
+        waveform_data = []
+        for i in range(0, len(audio), samples_per_pixel):
+            chunk = audio[i:i + samples_per_pixel]
+            if len(chunk) > 0:
+                waveform_data.append(float(np.max(np.abs(chunk))))
+        
+        # Normalize waveform
+        max_val = max(waveform_data) if waveform_data else 1
+        waveform_data = [v / max_val for v in waveform_data]
+        
+        return jsonify({
+            'success': True,
+            'audio_path': sample_path,
+            'audio_url': '/static/sample.wav',
+            'title': 'Sample Audio',
+            'duration': duration,
+            'waveform_data': waveform_data
+        })
+        
+    except Exception as e:
+        log.error(f"Error loading sample: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

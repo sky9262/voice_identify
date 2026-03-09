@@ -486,6 +486,59 @@
             50% { transform: scale(1.3); opacity: 0.7; }
         }
         
+        @keyframes loadingPulse {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 1; }
+        }
+        
+        @keyframes loadingDots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+        
+        .loading-vibevoice {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 30px;
+            gap: 15px;
+        }
+        
+        .loading-vibevoice .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(153, 51, 255, 0.2);
+            border-top-color: #9933ff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        .loading-vibevoice .status {
+            color: #9933ff;
+            font-weight: bold;
+            animation: loadingPulse 1.5s ease-in-out infinite;
+        }
+        
+        .typing-text {
+            display: inline;
+        }
+        
+        .typing-cursor {
+            display: inline-block;
+            width: 2px;
+            height: 1em;
+            background-color: #00d4ff;
+            animation: blink 0.7s step-end infinite;
+            margin-left: 2px;
+            vertical-align: text-bottom;
+        }
+        
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+        
         .live-controls {
             display: flex;
             justify-content: center;
@@ -787,6 +840,9 @@
                         <button class="btn btn-primary" id="downloadYoutubeBtn" onclick="downloadYoutubeAudio()">
                             <span>⬇️</span> Download Audio
                         </button>
+                        <button class="btn btn-secondary" onclick="loadSampleAudio()">
+                            <span>📁</span> Load Sample
+                        </button>
                     </div>
                     
                     <div id="youtubeStatus" style="margin-bottom: 20px;">
@@ -939,6 +995,31 @@
                     <button class="btn" onclick="clearYoutubeTranscript()" style="background: #333;">🗑️ Clear</button>
                 </div>
             </div>
+            
+            <!-- VibeVoice Post-Process Results -->
+            <div class="card" id="postProcessCard" style="display: none;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h2 style="margin: 0;"><span class="icon">🎙️</span> Post-Process Transcript (VibeVoice)</h2>
+                    <button class="btn" id="rerunPostProcessBtn" onclick="runVibeVoicePostProcess()" style="background: #9933ff;">
+                        🔄 Re-run Post-Process
+                    </button>
+                </div>
+                
+                <!-- Stats -->
+                <div id="postProcessStats" style="background: rgba(153,51,255,0.1); border-radius: 10px; padding: 15px; margin-bottom: 15px; border-left: 4px solid #9933ff;">
+                    <div style="color: #888; font-size: 0.9em;">Processing...</div>
+                </div>
+                
+                <!-- Transcript -->
+                <div id="postProcessTranscript" style="background: rgba(0,0,0,0.3); border-radius: 10px; padding: 15px; min-height: 150px; max-height: 400px; overflow-y: auto; font-family: monospace;">
+                    <div style="color: #666;">Post-process results will appear here...</div>
+                </div>
+                
+                <div style="margin-top: 15px; display: flex; gap: 10px;">
+                    <button class="btn" onclick="copyPostProcessTranscript()" style="background: #333;">📋 Copy Transcript</button>
+                    <button class="btn" onclick="downloadPostProcessJSON()" style="background: #333;">💾 Download JSON</button>
+                </div>
+            </div>
         </div>
         
         <!-- Settings Tab -->
@@ -971,22 +1052,37 @@
             <!-- Model Selection -->
             <div class="card" style="margin-bottom: 30px;">
                 <h2><span class="icon">⚙️</span> ASR Model Selection</h2>
-                <p style="color: #888; margin-bottom: 20px;">Select and initialize different Parakeet models for transcription.</p>
+                <p style="color: #888; margin-bottom: 20px;">Select language and ASR model for transcription.</p>
+                
+                <!-- Language Selection -->
+                <div style="margin-bottom: 20px;">
+                    <label style="color: #888; font-size: 0.9em; display: block; margin-bottom: 8px;">🌐 Language</label>
+                    <select id="languageSelect" onchange="onLanguageChange()" style="width: 100%; max-width: 300px; padding: 12px; border-radius: 8px; background: #1a1a2e; border: 1px solid #00d4ff; color: #fff; font-size: 1em;">
+                        <option value="en" selected>🇺🇸 English</option>
+                        <option value="eu">🇪🇺 European (25 languages)</option>
+                        <option value="ja">🇯🇵 Japanese (日本語)</option>
+                    </select>
+                </div>
                 
                 <div style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
                     <div style="flex: 1; min-width: 250px;">
                         <label style="color: #888; font-size: 0.9em; display: block; margin-bottom: 8px;">ASR Model</label>
                         <select id="parakeetModelSelect" style="width: 100%; padding: 12px; border-radius: 8px; background: #1a1a2e; border: 1px solid #333; color: #fff; font-size: 1em;">
-                            <optgroup label="Parakeet (Fast, Low-Latency)">
-                                <option value="mlx-community/parakeet-tdt-1.1b">parakeet-tdt-1.1b (1.1B, Most Accurate)</option>
-                                <option value="mlx-community/parakeet-tdt-0.6b-v3">parakeet-tdt-0.6b-v3 (600M, Fast)</option>
-                                <option value="mlx-community/parakeet-ctc-1.1b">parakeet-ctc-1.1b (1.1B, CTC)</option>
-                                <option value="mlx-community/parakeet-ctc-0.6b">parakeet-ctc-0.6b (600M, CTC Fast)</option>
-                                <option value="mlx-community/parakeet-tdt-0.6b-v2">parakeet-tdt-0.6b-v2 (600M, Older)</option>
+                            <optgroup label="Parakeet - English">
+                                <option value="mlx-community/parakeet-tdt-1.1b" data-lang="en">parakeet-tdt-1.1b (1.1B, Most Accurate)</option>
+                                <option value="mlx-community/parakeet-ctc-1.1b" data-lang="en">parakeet-ctc-1.1b (1.1B, CTC)</option>
+                                <option value="mlx-community/parakeet-ctc-0.6b" data-lang="en">parakeet-ctc-0.6b (600M, CTC Fast)</option>
+                            </optgroup>
+                            <optgroup label="Parakeet - European Multilingual">
+                                <option value="mlx-community/parakeet-tdt-0.6b-v3" data-lang="eu">parakeet-tdt-0.6b-v3 (600M, 25 Languages)</option>
+                                <option value="mlx-community/parakeet-tdt-0.6b-v2" data-lang="eu">parakeet-tdt-0.6b-v2 (600M, Older)</option>
+                            </optgroup>
+                            <optgroup label="Parakeet - Japanese">
+                                <option value="mlx-community/parakeet-tdt_ctc-0.6b-ja" data-lang="ja">parakeet-tdt_ctc-0.6b-ja (600M, Japanese)</option>
                             </optgroup>
                             <optgroup label="Voxtral (Mistral ASR)">
-                                <option value="mlx-community/Voxtral-Mini-3B-2507-bf16">Voxtral-Mini-3B (3B, High Quality)</option>
-                                <option value="mlx-community/Voxtral-Mini-4B-Realtime-2602-4bit">Voxtral-Mini-4B-Realtime (4B, 4-bit)</option>
+                                <option value="mlx-community/Voxtral-Mini-3B-2507-bf16" data-lang="multi">Voxtral-Mini-3B (3B, High Quality)</option>
+                                <option value="mlx-community/Voxtral-Mini-4B-Realtime-2602-4bit" data-lang="multi">Voxtral-Mini-4B-Realtime (4B, 4-bit)</option>
                             </optgroup>
                         </select>
                     </div>
@@ -1037,6 +1133,105 @@
                         <li><strong>ECAPA-TDNN</strong> - Speaker embedding similarity (who)</li>
                         <li><strong>Combined</strong> - Both must agree for high-confidence changes</li>
                     </ul>
+                </div>
+            </div>
+            
+            <!-- VibeVoice Post-Process Settings -->
+            <div class="card" style="margin-bottom: 30px;">
+                <h2>
+                    <span class="icon">🎙️</span> VibeVoice Post-Process
+                    <span style="cursor: help; color: #888; font-size: 0.6em; margin-left: 10px; vertical-align: middle;" 
+                          title="Records session audio and runs Microsoft VibeVoice-ASR at the end for high-accuracy transcription with automatic speaker diarization. Speakers are matched to enrolled names using voice embeddings.">ℹ️</span>
+                </h2>
+                <p style="color: #888; margin-bottom: 20px;">High-quality post-processing with speaker diarization after playback ends.</p>
+                
+                <!-- Enable Toggle -->
+                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 25px; padding: 15px; background: rgba(0,212,255,0.1); border-radius: 10px; border-left: 4px solid #00d4ff;">
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                        <input type="checkbox" id="enableVibeVoice" checked style="width: 20px; height: 20px; cursor: pointer;">
+                        <span style="color: #00d4ff; font-weight: bold;">Enable Post-Process</span>
+                    </label>
+                    <span style="color: #888; font-size: 0.85em;">Auto-run when playback stops</span>
+                </div>
+                
+                <!-- Customized Context -->
+                <div style="margin-bottom: 25px;">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+                        <label style="color: #fff; font-weight: bold;">📝 Customized Context</label>
+                        <span style="cursor: help; color: #888; font-size: 0.8em;" 
+                              title="Add custom terms, names, technical vocabulary, or background info to improve recognition accuracy. Enter one term per line.">ℹ️</span>
+                    </div>
+                    <textarea id="vibeVoiceContext" 
+                              placeholder="Add your customized terms for better recognition...&#10;Example:&#10;VibeVoice&#10;Microsoft&#10;Azure&#10;Neural Networks" 
+                              style="width: 100%; min-height: 100px; padding: 12px; border-radius: 8px; background: #1a1a2e; border: 1px solid #333; color: #fff; font-size: 0.95em; resize: vertical;"></textarea>
+                </div>
+                
+                <!-- Sampling Settings -->
+                <div style="background: rgba(255,255,255,0.03); border-radius: 10px; padding: 20px;">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 15px;">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" id="enableSampling" style="width: 18px; height: 18px; cursor: pointer;">
+                            <span style="color: #fff; font-weight: bold;">🎲 Enable Sampling</span>
+                        </label>
+                        <span style="cursor: help; color: #888; font-size: 0.8em;" 
+                              title="Enable stochastic sampling for more varied outputs. When disabled (default), uses greedy decoding for deterministic results.">ℹ️</span>
+                    </div>
+                    
+                    <div id="samplingControls" style="opacity: 0.5; pointer-events: none;">
+                        <!-- Temperature -->
+                        <div style="margin-bottom: 20px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <label style="color: #9933ff; font-weight: bold;">Temperature</label>
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <input type="number" id="vibeTemperatureInput" value="0" min="0" max="2" step="0.1" 
+                                           style="width: 60px; padding: 5px; border-radius: 5px; background: #1a1a2e; border: 1px solid #333; color: #fff; text-align: center;"
+                                           onchange="document.getElementById('vibeTemperature').value = this.value">
+                                    <button onclick="document.getElementById('vibeTemperature').value = 0; document.getElementById('vibeTemperatureInput').value = 0;" 
+                                            style="padding: 5px 10px; border-radius: 5px; background: #333; border: none; color: #888; cursor: pointer;">↺</button>
+                                </div>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <span style="color: #666; font-size: 0.85em;">0</span>
+                                <input type="range" id="vibeTemperature" min="0" max="2" step="0.1" value="0" 
+                                       style="flex: 1; accent-color: #9933ff;"
+                                       oninput="document.getElementById('vibeTemperatureInput').value = this.value">
+                                <span style="color: #666; font-size: 0.85em;">2</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Top-p -->
+                        <div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <label style="color: #9933ff; font-weight: bold;">Top-p</label>
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <input type="number" id="vibeTopPInput" value="1" min="0" max="1" step="0.05" 
+                                           style="width: 60px; padding: 5px; border-radius: 5px; background: #1a1a2e; border: 1px solid #333; color: #fff; text-align: center;"
+                                           onchange="document.getElementById('vibeTopP').value = this.value">
+                                    <button onclick="document.getElementById('vibeTopP').value = 1; document.getElementById('vibeTopPInput').value = 1;" 
+                                            style="padding: 5px 10px; border-radius: 5px; background: #333; border: none; color: #888; cursor: pointer;">↺</button>
+                                </div>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <span style="color: #666; font-size: 0.85em;">0</span>
+                                <input type="range" id="vibeTopP" min="0" max="1" step="0.05" value="1" 
+                                       style="flex: 1; accent-color: #9933ff;"
+                                       oninput="document.getElementById('vibeTopPInput').value = this.value">
+                                <span style="color: #666; font-size: 0.85em;">1</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Status -->
+                <div id="vibeVoiceStatus" style="margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.03); border-radius: 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="color: #888;">Model Status:</span>
+                        <span id="vibeVoiceModelStatus" style="color: #ffaa00;">Not loaded (loads on first use)</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+                        <span style="color: #888;">Session Audio:</span>
+                        <span id="vibeVoiceSessionStatus" style="color: #888;">No audio recorded</span>
+                    </div>
                 </div>
             </div>
             
@@ -2202,6 +2397,10 @@
             // Finalize current line
             if (currentLineElement) {
                 currentLineElement.classList.remove('live-updating');
+                // Remove cursor and reset typing state
+                const cursor = currentLineElement.querySelector('.typing-cursor');
+                if (cursor) cursor.remove();
+                lastDisplayedText = '';
                 currentLineElement = null;
             }
             
@@ -2291,6 +2490,9 @@
                             }
                             // Mark line as complete
                             currentLineElement.classList.remove('live-updating');
+                            const cursor1 = currentLineElement.querySelector('.typing-cursor');
+                            if (cursor1) cursor1.remove();
+                            lastDisplayedText = '';
                             currentLineElement = null;
                             console.log('Auto-split: silence timeout reached (' + silenceDuration.toFixed(1) + 's)');
                             // Reset silence timer
@@ -2361,6 +2563,9 @@
                             console.log(`Speaker change: ${streamSpeaker} -> ${currentSpeaker}, method=${data.change_method}`);
                             if (currentLineElement) {
                                 currentLineElement.classList.remove('live-updating');
+                                const cursor2 = currentLineElement.querySelector('.typing-cursor');
+                                if (cursor2) cursor2.remove();
+                                lastDisplayedText = '';
                                 currentLineElement = null;
                             }
                             streamBuffer = data.text;
@@ -2381,6 +2586,9 @@
                             if (trimmedBuffer.match(/[.!?]["']?$/) && wordCount >= 5) {
                                 if (currentLineElement) {
                                     currentLineElement.classList.remove('live-updating');
+                                    const cursorMic = currentLineElement.querySelector('.typing-cursor');
+                                    if (cursorMic) cursorMic.remove();
+                                    lastDisplayedText = '';
                                     currentLineElement = null;
                                 }
                                 streamBuffer = '';
@@ -2401,6 +2609,49 @@
                 }
             } catch (error) {
                 console.error('Error processing mic chunk:', error);
+            }
+        }
+        
+        async function loadSampleAudio() {
+            // Load the sample.wav file for testing
+            document.getElementById('ytStatusText').textContent = 'Loading sample audio...';
+            document.getElementById('ytStatusText').style.color = '#00D4FF';
+            
+            try {
+                const response = await fetch('/api/load-sample');
+                const data = await response.json();
+                
+                if (data.success) {
+                    youtubeAudioPath = data.audio_path;
+                    youtubeDuration = data.duration;
+                    
+                    // Set audio player source
+                    const audioPlayer = document.getElementById('youtubeAudioPlayer');
+                    audioPlayer.src = data.audio_url;
+                    audioPlayer.load();
+                    
+                    // Show player section
+                    document.getElementById('ytVideoTitle').textContent = data.title || 'Sample Audio';
+                    document.getElementById('youtubePlayerSection').style.display = 'block';
+                    document.getElementById('ytVideoDuration').textContent = formatTime(youtubeDuration);
+                    
+                    // Setup events (non-critical)
+                    try { setupAudioPlayerEvents(); } catch(e) { console.warn('Audio events setup:', e); }
+                    
+                    // Update status LAST and use setTimeout to ensure it sticks
+                    setTimeout(() => {
+                        document.getElementById('ytStatusText').textContent = `Sample loaded: ${formatTime(youtubeDuration)} - Click "Start Live Processing" then play the audio.`;
+                        document.getElementById('ytStatusText').style.color = '#00FF88';
+                    }, 100);
+                    return; // Exit successfully
+                } else {
+                    document.getElementById('ytStatusText').textContent = 'Error: ' + data.error;
+                    document.getElementById('ytStatusText').style.color = '#FF4444';
+                }
+            } catch (error) {
+                console.error('Error loading sample:', error);
+                document.getElementById('ytStatusText').textContent = 'Error loading sample: ' + error.message;
+                document.getElementById('ytStatusText').style.color = '#FF4444';
             }
         }
         
@@ -2649,6 +2900,11 @@
             updateYtSpeakerSummary();
             
             console.log('YouTube live processing stopped');
+            
+            // Auto-run VibeVoice post-process if enabled
+            if (document.getElementById('enableVibeVoice') && document.getElementById('enableVibeVoice').checked) {
+                runVibeVoicePostProcess();
+            }
         }
         
         // =============================================
@@ -2976,6 +3232,9 @@
                                 // Sentence ended with enough words - finalize line and start new one with SAME speaker
                                 if (currentLineElement) {
                                     currentLineElement.classList.remove('live-updating');
+                                    const cursorYt = currentLineElement.querySelector('.typing-cursor');
+                                    if (cursorYt) cursorYt.remove();
+                                    lastDisplayedText = '';
                                     currentLineElement = null;
                                 }
                                 streamBuffer = '';
@@ -3000,6 +3259,39 @@
             }
         }
         
+        // Track last displayed text for live updates
+        let lastDisplayedText = '';
+        let typingQueue = [];
+        let isTyping = false;
+        
+        function typeNextChar() {
+            if (typingQueue.length === 0) {
+                isTyping = false;
+                return;
+            }
+            
+            isTyping = true;
+            const { element, char } = typingQueue.shift();
+            if (element) {
+                element.textContent += char;
+            }
+            
+            // Type next character after 15ms (fast typing)
+            setTimeout(typeNextChar, 15);
+        }
+        
+        function animateTyping(element, newChars) {
+            // Queue all new characters for typing
+            for (const char of newChars) {
+                typingQueue.push({ element, char });
+            }
+            
+            // Start typing if not already
+            if (!isTyping) {
+                typeNextChar();
+            }
+        }
+        
         function updateOrCreateLiveLine(timeSeconds, speaker, text) {
             if (!text) return;
             
@@ -3015,18 +3307,45 @@
                 : `<span style="color:${speakerColor}">[${speaker}]</span>`;
             
             if (currentLineElement) {
-                // Update existing line
-                currentLineElement.innerHTML = `<span style="color:#666">[${timeStr}]</span> ${speakerHtml} ${text}`;
+                // Update existing line with typing effect
+                const textSpan = currentLineElement.querySelector('.live-text');
+                if (textSpan) {
+                    // Find new characters to animate
+                    if (text.length > lastDisplayedText.length && text.startsWith(lastDisplayedText)) {
+                        // New text is extension - animate new part
+                        const newChars = text.slice(lastDisplayedText.length);
+                        animateTyping(textSpan, newChars);
+                    } else {
+                        // Text changed - show immediately and animate from there
+                        textSpan.textContent = text;
+                    }
+                    lastDisplayedText = text;
+                } else {
+                    currentLineElement.innerHTML = `<span style="color:#666">[${timeStr}]</span> ${speakerHtml} <span class="live-text">${text}</span><span class="typing-cursor"></span>`;
+                    lastDisplayedText = text;
+                }
             } else {
+                // Remove cursor from ALL existing lines before creating new one
+                container.querySelectorAll('.typing-cursor').forEach(c => c.remove());
+                
+                // Clear typing queue for previous line
+                typingQueue = [];
+                
                 // Create new line
+                lastDisplayedText = ''; // Reset for new line
                 const line = document.createElement('div');
                 line.className = 'transcript-line live-updating';
                 line.dataset.time = timeSeconds;
                 line.style.cursor = 'pointer';
                 line.onclick = () => seekToTime(timeSeconds);
-                line.innerHTML = `<span style="color:#666">[${timeStr}]</span> ${speakerHtml} ${text}`;
+                line.innerHTML = `<span style="color:#666">[${timeStr}]</span> ${speakerHtml} <span class="live-text"></span><span class="typing-cursor"></span>`;
                 container.appendChild(line);
                 currentLineElement = line;
+                
+                // Animate the initial text
+                const textSpan = line.querySelector('.live-text');
+                animateTyping(textSpan, text);
+                lastDisplayedText = text;
                 
                 // Also add to transcript array
                 youtubeTranscriptLines.push({
@@ -3387,6 +3706,21 @@
                 }
             }
             
+            // Update VibeVoice status
+            const vibeVoiceModelStatusEl = document.getElementById('vibeVoiceModelStatus');
+            if (vibeVoiceModelStatusEl) {
+                if (data.vibevoice_loaded) {
+                    vibeVoiceModelStatusEl.textContent = 'Loaded';
+                    vibeVoiceModelStatusEl.style.color = '#00ff88';
+                } else if (data.vibevoice_available) {
+                    vibeVoiceModelStatusEl.textContent = 'Not loaded (loads on first use)';
+                    vibeVoiceModelStatusEl.style.color = '#ffaa00';
+                } else {
+                    vibeVoiceModelStatusEl.textContent = 'Not available';
+                    vibeVoiceModelStatusEl.style.color = '#ff4444';
+                }
+            }
+            
             updateSpeakersList(data.speakers_enrolled || []);
             updateSettingsSpeakerList(data.speakers_enrolled || []);
         }
@@ -3458,6 +3792,24 @@
                     }
                 } catch (pyannoteErr) {
                     console.warn('Pyannote init skipped:', pyannoteErr.message);
+                }
+                
+                // Step 4: Initialize VibeVoice-ASR (for post-processing)
+                btn.textContent = 'Loading VibeVoice...';
+                try {
+                    const res4 = await fetch('/api/init-vibevoice', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({})
+                    });
+                    const data4 = await res4.json();
+                    
+                    if (!data4.success) {
+                        console.warn('VibeVoice warning: ' + data4.error);
+                        // Don't fail completely, VibeVoice is optional
+                    }
+                } catch (vibevoiceErr) {
+                    console.warn('VibeVoice init skipped:', vibevoiceErr.message);
                 }
                 
                 // All done - refresh status
@@ -3865,6 +4217,38 @@
             }
         }
         
+        // Language-based model auto-selection
+        function onLanguageChange() {
+            const langSelect = document.getElementById('languageSelect');
+            const modelSelect = document.getElementById('parakeetModelSelect');
+            const lang = langSelect.value;
+            
+            // Default models for each language
+            const defaultModels = {
+                'en': 'mlx-community/parakeet-tdt-1.1b',
+                'eu': 'mlx-community/parakeet-tdt-0.6b-v3',
+                'ja': 'mlx-community/parakeet-tdt_ctc-0.6b-ja'
+            };
+            
+            // Set the recommended model for selected language
+            if (defaultModels[lang]) {
+                modelSelect.value = defaultModels[lang];
+            }
+            
+            // Highlight compatible models and dim incompatible ones
+            const options = modelSelect.querySelectorAll('option');
+            options.forEach(opt => {
+                const optLang = opt.getAttribute('data-lang');
+                if (optLang === lang || optLang === 'multi') {
+                    opt.style.color = '#fff';
+                } else {
+                    opt.style.color = '#666';
+                }
+            });
+            
+            console.log(`Language changed to ${lang}, model set to ${modelSelect.value}`);
+        }
+        
         async function initializeParakeetModel() {
                     const select = document.getElementById('parakeetModelSelect');
                     const modelName = select.value;
@@ -4068,6 +4452,212 @@
                     speakerSpan.style.color = '#00ff88';  // Green for enrolled
                 }
             });
+        }
+        
+        // =============================================
+        // VibeVoice Post-Process Functions
+        // =============================================
+        
+        let postProcessData = null; // Store results for download
+        
+        // Toggle sampling controls based on checkbox
+        document.addEventListener('DOMContentLoaded', () => {
+            const enableSamplingCheckbox = document.getElementById('enableSampling');
+            const samplingControls = document.getElementById('samplingControls');
+            
+            if (enableSamplingCheckbox && samplingControls) {
+                enableSamplingCheckbox.addEventListener('change', () => {
+                    if (enableSamplingCheckbox.checked) {
+                        samplingControls.style.opacity = '1';
+                        samplingControls.style.pointerEvents = 'auto';
+                    } else {
+                        samplingControls.style.opacity = '0.5';
+                        samplingControls.style.pointerEvents = 'none';
+                    }
+                });
+            }
+        });
+        
+        async function runVibeVoicePostProcess() {
+            const postProcessCard = document.getElementById('postProcessCard');
+            const statsDiv = document.getElementById('postProcessStats');
+            const transcriptDiv = document.getElementById('postProcessTranscript');
+            const rerunBtn = document.getElementById('rerunPostProcessBtn');
+            
+            // Show the card
+            postProcessCard.style.display = 'block';
+            
+            // Show loading state with progress bar
+            rerunBtn.disabled = true;
+            rerunBtn.innerHTML = '⏳ Processing...';
+            statsDiv.innerHTML = '<div style="color: #ffaa00;"><strong>🎙️ Running VibeVoice ASR...</strong><br>This may take a minute for long audio.</div>';
+            
+            // Estimate processing time based on audio duration (VibeVoice ~0.03x realtime)
+            const estimatedTime = Math.max(5, (youtubeDuration || 60) * 0.03);
+            let progressPercent = 0;
+            let startTime = Date.now();
+            
+            // Update progress UI
+            function updateProgress() {
+                const elapsed = (Date.now() - startTime) / 1000;
+                progressPercent = Math.min(95, Math.round((elapsed / estimatedTime) * 100));
+                
+                const progressBar = document.getElementById('vibeProgressBar');
+                const progressText = document.getElementById('vibeProgressText');
+                if (progressBar) progressBar.style.width = progressPercent + '%';
+                if (progressText) progressText.textContent = progressPercent + '%';
+            }
+            
+            transcriptDiv.innerHTML = `
+                <div class="loading-vibevoice">
+                    <div class="spinner"></div>
+                    <div class="status">🎙️ Processing audio with VibeVoice...</div>
+                    <div style="width: 100%; max-width: 300px; margin: 15px 0;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                            <span style="color: #888; font-size: 0.85em;">Progress</span>
+                            <span id="vibeProgressText" style="color: #9933ff; font-weight: bold;">0%</span>
+                        </div>
+                        <div style="background: #333; border-radius: 10px; height: 8px; overflow: hidden;">
+                            <div id="vibeProgressBar" style="background: linear-gradient(90deg, #9933ff, #00d4ff); height: 100%; width: 0%; transition: width 0.3s;"></div>
+                        </div>
+                    </div>
+                    <div style="color: #888; font-size: 0.85em; text-align: center;">
+                        Transcribing with speaker diarization<br>
+                        <span style="font-size: 0.8em;">Model downloads on first use (~6GB)</span>
+                    </div>
+                </div>
+            `;
+            
+            // Start progress animation
+            const progressInterval = setInterval(updateProgress, 500);
+            
+            try {
+                // Get settings from UI
+                const context = document.getElementById('vibeVoiceContext')?.value || '';
+                const enableSampling = document.getElementById('enableSampling')?.checked || false;
+                const temperature = parseFloat(document.getElementById('vibeTemperature')?.value || '0');
+                const topP = parseFloat(document.getElementById('vibeTopP')?.value || '1');
+                
+                const res = await fetch('/api/post-process', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        context: context,
+                        enable_sampling: enableSampling,
+                        temperature: temperature,
+                        top_p: topP
+                    })
+                });
+                
+                const data = await res.json();
+                
+                // Stop progress animation and show 100%
+                clearInterval(progressInterval);
+                const progressBar = document.getElementById('vibeProgressBar');
+                const progressText = document.getElementById('vibeProgressText');
+                if (progressBar) progressBar.style.width = '100%';
+                if (progressText) progressText.textContent = '100%';
+                
+                if (data.success) {
+                    postProcessData = data; // Store for download
+                    
+                    // Display stats
+                    const stats = data.stats;
+                    statsDiv.innerHTML = `
+                        <div style="display: flex; flex-wrap: wrap; gap: 20px;">
+                            <div>
+                                <span style="color: #888;">⏱️ Processing Time:</span>
+                                <span style="color: #00ff88; font-weight: bold;">${stats.processing_time}s</span>
+                            </div>
+                            <div>
+                                <span style="color: #888;">🎵 Audio Duration:</span>
+                                <span style="color: #00d4ff; font-weight: bold;">${stats.audio_duration}s</span>
+                            </div>
+                            <div>
+                                <span style="color: #888;">🗣️ Speakers:</span>
+                                <span style="color: #9933ff; font-weight: bold;">${Object.keys(stats.speaker_mapping).length}</span>
+                            </div>
+                        </div>
+                    `;
+                    
+                    // Display transcript
+                    if (data.segments && data.segments.length > 0) {
+                        transcriptDiv.innerHTML = data.segments.map(seg => {
+                            const speaker = seg.Speaker || 'Unknown';
+                            const isEnrolled = !speaker.startsWith('#') && !speaker.startsWith('Speaker');
+                            const speakerColor = isEnrolled ? '#00ff88' : '#ffaa00';
+                            const start = formatTime(seg.Start);
+                            const end = formatTime(seg.End);
+                            return `
+                                <div style="margin-bottom: 10px; padding: 10px; background: rgba(255,255,255,0.03); border-radius: 5px;">
+                                    <div style="display: flex; gap: 10px; align-items: baseline; margin-bottom: 5px;">
+                                        <span style="color: #666; font-size: 0.8em;">${start} - ${end}</span>
+                                        <span style="color: ${speakerColor}; font-weight: bold;">[${speaker}]</span>
+                                    </div>
+                                    <div style="color: #fff;">${seg.Content}</div>
+                                </div>
+                            `;
+                        }).join('');
+                    } else {
+                        transcriptDiv.innerHTML = '<div style="color: #888;">No segments returned</div>';
+                    }
+                } else {
+                    statsDiv.innerHTML = `<div style="color: #ff4444;"><strong>❌ Error:</strong> ${data.error}</div>`;
+                    transcriptDiv.innerHTML = '';
+                }
+            } catch (error) {
+                clearInterval(progressInterval);
+                console.error('Post-process error:', error);
+                statsDiv.innerHTML = `<div style="color: #ff4444;"><strong>❌ Error:</strong> ${error.message}</div>`;
+                transcriptDiv.innerHTML = '';
+            } finally {
+                rerunBtn.disabled = false;
+                rerunBtn.innerHTML = '🔄 Re-run Post-Process';
+            }
+        }
+        
+        function formatTime(seconds) {
+            if (!seconds && seconds !== 0) return '0:00';
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+        
+        function copyPostProcessTranscript() {
+            if (!postProcessData || !postProcessData.segments) {
+                alert('No transcript to copy');
+                return;
+            }
+            
+            const text = postProcessData.segments.map(seg => {
+                const start = formatTime(seg.Start);
+                return `[${start}] [${seg.Speaker}] ${seg.Content}`;
+            }).join('\n\n');
+            
+            navigator.clipboard.writeText(text).then(() => {
+                alert('Transcript copied to clipboard!');
+            }).catch(err => {
+                console.error('Copy failed:', err);
+                alert('Failed to copy: ' + err.message);
+            });
+        }
+        
+        function downloadPostProcessJSON() {
+            if (!postProcessData) {
+                alert('No data to download');
+                return;
+            }
+            
+            const json = JSON.stringify(postProcessData.segments, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'vibevoice_transcript.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         }
     </script>
     

@@ -15,6 +15,8 @@ This file has been refactored into modules:
 """
 
 from flask import Flask, render_template
+import signal
+import sys
 
 from config import UPLOAD_FOLDER, MAX_CONTENT_LENGTH, device
 from routes import api
@@ -46,7 +48,20 @@ def index():
 # =============================================================================
 
 if __name__ == '__main__':
+    # Graceful shutdown handler
+    def signal_handler(sig, frame):
+        print('\n\nShutting down gracefully...')
+        sys.exit(0)
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
     print("Starting Speaker Identification Web Server...")
     print(f"Device: {device}")
     print("Open http://localhost:5001 in your browser")
-    app.run(debug=True, host='0.0.0.0', port=5001, use_reloader=False)
+    print("Press Ctrl+C to stop")
+    
+    try:
+        app.run(debug=True, host='0.0.0.0', port=5001, use_reloader=False, threaded=True)
+    except (KeyboardInterrupt, SystemExit):
+        print('\nServer stopped.')
