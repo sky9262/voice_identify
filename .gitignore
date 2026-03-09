@@ -14,3 +14,7 @@ package-lock.json
 yarn.lock
 package.json
 .swarm
+
+# Auto-downloaded on init
+pretrained_models/
+*.pkl
