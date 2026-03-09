@@ -779,7 +779,7 @@ def process_streaming():
                     if chunk_vs_prev_sim < 0.20:  # Very low similarity = likely different speaker (was 0.35, too aggressive)
                         immediate_speaker_change = True
                         print(f"IMMEDIATE speaker change detected: chunk_sim={chunk_vs_prev_sim:.3f}")
-                except:
+                except (json.JSONDecodeError, ValueError, TypeError):
                     pass
             
             # Calculate total accumulated duration
@@ -874,7 +874,7 @@ def process_streaming():
         if prev_embedding_json:
             try:
                 prev_emb = np.array(json.loads(prev_embedding_json))
-            except:
+            except (json.JSONDecodeError, ValueError, TypeError):
                 pass
         
         # Try hybrid detection on EVERY chunk (not just after 3 seconds)

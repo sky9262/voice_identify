@@ -9,6 +9,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
+import logger as log
 from config import device, ECAPA_MODEL_ID
 
 # Fix torchaudio compatibility for SpeechBrain
@@ -98,13 +99,10 @@ def init_model():
         return True
     
     if not SPEECHBRAIN_AVAILABLE:
-        print("ERROR: SpeechBrain not installed!")
-        print("Install with: pip install speechbrain")
+        log.error("SpeechBrain not installed! Install with: pip install speechbrain")
         return False
     
-    print(f"Loading ECAPA-TDNN model...")
-    print(f"Model: {ECAPA_MODEL_ID}")
-    print(f"Target device: {device}")
+    log.info(f"Loading ECAPA-TDNN model on {device}...")
     
     try:
         # SpeechBrain uses run_opts for device placement
@@ -117,30 +115,29 @@ def init_model():
                     savedir="pretrained_models/spkrec-ecapa-voxceleb",
                     run_opts={"device": "mps"}
                 )
-                print("ECAPA-TDNN loaded on MPS (Apple Silicon GPU)")
+                log.info("ECAPA-TDNN loaded on MPS (Apple Silicon GPU)")
             except Exception as mps_error:
-                print(f"MPS failed ({mps_error}), falling back to CPU")
+                log.warning(f"MPS failed ({mps_error}), falling back to CPU")
                 ecapa_model = EncoderClassifier.from_hparams(
                     source=ECAPA_MODEL_ID,
                     savedir="pretrained_models/spkrec-ecapa-voxceleb",
                     run_opts={"device": "cpu"}
                 )
-                print("ECAPA-TDNN loaded on CPU")
+                log.info("ECAPA-TDNN loaded on CPU")
         else:
             ecapa_model = EncoderClassifier.from_hparams(
                 source=ECAPA_MODEL_ID,
                 savedir="pretrained_models/spkrec-ecapa-voxceleb",
                 run_opts={"device": device}
             )
-            print(f"ECAPA-TDNN loaded on {device}")
+            log.info(f"ECAPA-TDNN loaded on {device}")
         
         model_loaded = True
-        print("ECAPA-TDNN speaker verification model loaded successfully!")
-        print("This model achieves ~0.8% EER on VoxCeleb test set.")
+        log.info("ECAPA-TDNN speaker verification ready (EER ~0.8%)")
         return True
         
     except Exception as e:
-        print(f"Failed to load ECAPA-TDNN: {e}")
+        log.error(f"Failed to load ECAPA-TDNN: {e}")
         import traceback
         traceback.print_exc()
         return False

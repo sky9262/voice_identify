@@ -62,6 +62,9 @@ ACCUM_DURATION_FOR_SPEAKER_ID = 2.0  # seconds (was 3.0, reduced for faster spea
 # Chunk history settings
 MAX_CHUNK_HISTORY = 15  # Keep last 15 chunks (~15 seconds)
 
+# Session speaker limits (prevent memory leak)
+MAX_SESSION_SPEAKERS = 50  # Maximum unique speakers per session
+
 # =============================================================================
 # Threading
 # =============================================================================

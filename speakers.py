@@ -10,13 +10,16 @@ import pickle
 import numpy as np
 import torch
 
+import logger as log
+
 from config import (
     SPEAKER_MEMORY_FILE,
     SPEAKER_CLUSTER_THRESHOLD,
     ADAPTIVE_UPDATE_THRESHOLD,
     ADAPTIVE_LEARNING_RATE,
     MAX_CHUNK_HISTORY,
-    ACCUM_DURATION_FOR_SPEAKER_ID
+    ACCUM_DURATION_FOR_SPEAKER_ID,
+    MAX_SESSION_SPEAKERS
 )
 from utils import embedding_to_hash
 
@@ -58,9 +61,9 @@ def save_speaker_memory():
                 save_dict[name] = np.array(emb)
         with open(SPEAKER_MEMORY_FILE, 'wb') as f:
             pickle.dump(save_dict, f)
-        print(f"Saved {len(save_dict)} enrolled speakers to {SPEAKER_MEMORY_FILE}")
+        log.info(f"Saved {len(save_dict)} enrolled speakers to {SPEAKER_MEMORY_FILE}")
     except Exception as e:
-        print(f"Error saving speaker memory: {e}")
+        log.error(f"Error saving speaker memory: {e}")
 
 
 def load_speaker_memory():
@@ -70,9 +73,9 @@ def load_speaker_memory():
         if os.path.exists(SPEAKER_MEMORY_FILE):
             with open(SPEAKER_MEMORY_FILE, 'rb') as f:
                 speaker_memory = pickle.load(f)
-            print(f"Loaded {len(speaker_memory)} enrolled speakers from {SPEAKER_MEMORY_FILE}")
+            log.info(f"Loaded {len(speaker_memory)} enrolled speakers from {SPEAKER_MEMORY_FILE}")
     except Exception as e:
-        print(f"Error loading speaker memory: {e}")
+        log.error(f"Error loading speaker memory: {e}")
 
 
 # =============================================================================
@@ -165,9 +168,9 @@ def update_speaker_profile(speaker_name, new_embedding):
     # Save to disk every 10 updates
     if count % 10 == 0:
         save_speaker_memory()
-        print(f"Adaptive update: '{speaker_name}' profile saved (update #{count})")
+        log.info(f"Adaptive update: '{speaker_name}' profile saved (update #{count})")
     else:
-        print(f"Adaptive update: '{speaker_name}' profile updated (update #{count})")
+        log.debug(f"Adaptive update: '{speaker_name}' profile updated (update #{count})")
     
     return True
 
@@ -206,15 +209,37 @@ def get_stable_speaker_id(embedding):
         count = session_speaker_counts[best_match]
         session_speakers[best_match] = (session_speakers[best_match] * count + emb_np) / (count + 1)
         session_speaker_counts[best_match] = count + 1
-        print(f"Matched existing speaker {best_match} (sim={best_sim:.3f})")
+        log.debug(f"Matched existing speaker {best_match} (sim={best_sim:.3f})")
         return best_match
     else:
         # New speaker - create new hash
         new_hash = embedding_to_hash(emb_np, length=6)
         session_speakers[new_hash] = emb_np.copy()
         session_speaker_counts[new_hash] = 1
-        print(f"New speaker detected: {new_hash} (best_sim={best_sim:.3f})")
+        log.debug(f"New speaker detected: {new_hash} (best_sim={best_sim:.3f})")
+        
+        # Cleanup: remove oldest speakers if over limit
+        if len(session_speakers) > MAX_SESSION_SPEAKERS:
+            _cleanup_session_speakers()
+        
         return new_hash
+
+
+def _cleanup_session_speakers():
+    """Remove oldest session speakers when over limit."""
+    global session_speakers, session_speaker_counts
+    
+    # Sort by count (lowest = oldest/least seen)
+    sorted_speakers = sorted(session_speaker_counts.items(), key=lambda x: x[1])
+    
+    # Remove oldest 10 speakers
+    remove_count = min(10, len(sorted_speakers) - MAX_SESSION_SPEAKERS + 10)
+    for speaker_hash, _ in sorted_speakers[:remove_count]:
+        del session_speakers[speaker_hash]
+        del session_speaker_counts[speaker_hash]
+        log.debug(f"Session cleanup: removed speaker {speaker_hash}")
+    
+    log.info(f"Session speakers cleaned: {len(session_speakers)} remaining")
 
 
 def reset_session():
@@ -226,7 +251,7 @@ def reset_session():
     chunk_history = []
     last_stable_speaker = None
     chunk_index_counter = 0
-    print("Session speakers, audio buffer, and chunk history reset")
+    log.info("Session speakers, audio buffer, and chunk history reset")
 
 
 def add_to_session_speakers(name, embedding):
@@ -415,7 +440,7 @@ def enroll_from_session_hash(speaker_hash, name, merge_with_existing=False):
             update_count = adaptive_update_counter[name]
             
             message = f"Learned fingerprint into '{name}' (profile update #{update_count})"
-            print(f"Adaptive merge: '{name}' learned from hash #{speaker_hash}, update #{update_count}")
+            log.debug(f"Adaptive merge: '{name}' learned from hash #{speaker_hash}, update #{update_count}")
         else:
             # Create new speaker or overwrite
             speaker_memory[name] = emb_tensor
