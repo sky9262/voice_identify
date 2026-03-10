@@ -901,6 +901,69 @@
                         <p style="color: #666; font-size: 0.8em; margin-top: 5px;">Auto-adds period and splits line after silence. 0 = disabled.</p>
                     </div>
                     
+                    <!-- Mic Waveform Visualization -->
+                    <div id="micWaveformContainer" style="height: 80px; background: rgba(0,0,0,0.3); border-radius: 8px; margin-bottom: 15px; overflow: hidden; position: relative; display: none;">
+                        <canvas id="micWaveformCanvas" style="width: 100%; height: 100%;"></canvas>
+                        <button onclick="toggleMicWaveformSettings()" style="position: absolute; top: 5px; right: 5px; background: rgba(0,0,0,0.5); border: none; color: #888; cursor: pointer; padding: 2px 6px; border-radius: 4px; font-size: 12px;">⚙️</button>
+                    </div>
+                    
+                    <!-- Mic Waveform Controls -->
+                    <div id="micWaveformControls" style="display: none; background: rgba(0,0,0,0.4); border-radius: 8px; padding: 15px; margin-bottom: 15px; font-size: 12px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <label style="color: #aaa; font-weight: bold;">Style:</label>
+                                <select id="micWaveformStyle" onchange="updateMicWaveformSettings()" style="background: #2a2a4a; color: #fff; border: 1px solid #444; border-radius: 4px; padding: 4px 10px; min-width: 140px;">
+                                    <option value="smooth">Smooth Wave</option>
+                                    <option value="bars">Frequency Bars</option>
+                                    <option value="circular">Circular</option>
+                                    <option value="mirror">Mirror Wave</option>
+                                    <option value="oscilloscope">Oscilloscope</option>
+                                    <option value="particles">Particles</option>
+                                    <option value="terrain">3D Terrain</option>
+                                    <option value="ribbon">Ribbon</option>
+                                </select>
+                            </div>
+                            <div style="display: flex; gap: 8px;">
+                                <button onclick="resetMicWaveformSettings()" style="background: #444; color: #fff; border: none; border-radius: 4px; padding: 5px 12px; cursor: pointer; font-size: 11px;">Reset</button>
+                                <button onclick="saveMicWaveformSettings()" style="background: #00ff88; color: #000; border: none; border-radius: 4px; padding: 5px 12px; cursor: pointer; font-size: 11px; font-weight: bold;">Save</button>
+                            </div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <label style="color: #888; width: 75px; flex-shrink: 0;">Smoothing</label>
+                                <input type="range" id="micWfSmoothing" min="0" max="99" value="85" onchange="updateMicWaveformSettings()" style="flex: 1; min-width: 80px;">
+                                <span id="micWfSmoothingVal" style="color: #0f8; width: 40px; text-align: right;">0.85</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <label style="color: #888; width: 75px; flex-shrink: 0;">Points</label>
+                                <input type="range" id="micWfPoints" min="32" max="256" value="128" step="16" onchange="updateMicWaveformSettings()" style="flex: 1; min-width: 80px;">
+                                <span id="micWfPointsVal" style="color: #0f8; width: 40px; text-align: right;">128</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <label style="color: #888; width: 75px; flex-shrink: 0;">Fade Trail</label>
+                                <input type="range" id="micWfFade" min="5" max="80" value="12" onchange="updateMicWaveformSettings()" style="flex: 1; min-width: 80px;">
+                                <span id="micWfFadeVal" style="color: #0f8; width: 40px; text-align: right;">0.12</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <label style="color: #888; width: 75px; flex-shrink: 0;">Line Width</label>
+                                <input type="range" id="micWfLineWidth" min="1" max="8" value="3" step="0.5" onchange="updateMicWaveformSettings()" style="flex: 1; min-width: 80px;">
+                                <span id="micWfLineWidthVal" style="color: #0f8; width: 40px; text-align: right;">2.5</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <label style="color: #888; width: 75px; flex-shrink: 0;">Amplitude</label>
+                                <input type="range" id="micWfAmplitude" min="20" max="90" value="40" onchange="updateMicWaveformSettings()" style="flex: 1; min-width: 80px;">
+                                <span id="micWfAmplitudeVal" style="color: #0f8; width: 40px; text-align: right;">0.40</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <label style="color: #888; width: 75px; flex-shrink: 0;">Glow</label>
+                                <div style="flex: 1; display: flex; align-items: center;">
+                                    <input type="checkbox" id="micWfGlow" checked onchange="updateMicWaveformSettings()" style="margin-right: 6px;">
+                                    <span style="color: #888;">Enable glow effect</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px;">
                         <button class="btn btn-success" id="startMicBtn" onclick="startMicrophoneProcessing()">
                             <span>▶️</span> Start Microphone
@@ -917,6 +980,79 @@
                     <div style="background: rgba(0,212,255,0.1); border-radius: 10px; padding: 15px; border-left: 4px solid #00d4ff;">
                         <div style="font-weight: bold; color: #00d4ff; margin-bottom: 10px;" id="ytVideoTitle">Video Title</div>
                         <audio id="youtubeAudioPlayer" controls style="width: 100%; margin-bottom: 10px;" crossorigin="anonymous"></audio>
+                        
+                        <!-- Waveform Visualization -->
+                        <div id="waveformContainer" style="height: 80px; background: rgba(0,0,0,0.3); border-radius: 8px; margin-bottom: 10px; overflow: hidden; position: relative;">
+                            <canvas id="waveformCanvas" style="width: 100%; height: 100%;"></canvas>
+                            <button onclick="toggleWaveformSettings()" style="position: absolute; top: 5px; right: 5px; background: rgba(0,0,0,0.5); border: none; color: #888; cursor: pointer; padding: 2px 6px; border-radius: 4px; font-size: 12px;">⚙️</button>
+                        </div>
+                        
+                        <!-- Waveform Controls -->
+                        <div id="waveformControls" style="display: none; background: rgba(0,0,0,0.4); border-radius: 8px; padding: 15px; margin-bottom: 10px; font-size: 12px;">
+                            <!-- Header with Style and Buttons -->
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <label style="color: #aaa; font-weight: bold;">Style:</label>
+                                    <select id="waveformStyle" onchange="updateWaveformSettings()" style="background: #2a2a4a; color: #fff; border: 1px solid #444; border-radius: 4px; padding: 4px 10px; min-width: 140px;">
+                                        <option value="smooth">Smooth Wave</option>
+                                        <option value="bars">Frequency Bars</option>
+                                        <option value="circular">Circular</option>
+                                        <option value="mirror">Mirror Wave</option>
+                                        <option value="oscilloscope">Oscilloscope</option>
+                                        <option value="particles">Particles</option>
+                                        <option value="terrain">3D Terrain</option>
+                                        <option value="ribbon">Ribbon</option>
+                                    </select>
+                                </div>
+                                <div style="display: flex; gap: 8px;">
+                                    <button onclick="resetWaveformSettings()" style="background: #444; color: #fff; border: none; border-radius: 4px; padding: 5px 12px; cursor: pointer; font-size: 11px;">Reset</button>
+                                    <button onclick="saveWaveformSettings()" style="background: #00d4ff; color: #000; border: none; border-radius: 4px; padding: 5px 12px; cursor: pointer; font-size: 11px; font-weight: bold;">Save</button>
+                                </div>
+                            </div>
+                            
+                            <!-- Sliders Grid - 2 columns -->
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px;">
+                                <!-- Smoothing -->
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <label style="color: #888; width: 75px; flex-shrink: 0;">Smoothing</label>
+                                    <input type="range" id="wfSmoothing" min="0" max="99" value="85" onchange="updateWaveformSettings()" style="flex: 1; min-width: 80px;">
+                                    <span id="wfSmoothingVal" style="color: #0ff; width: 40px; text-align: right;">0.85</span>
+                                </div>
+                                <!-- Points -->
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <label style="color: #888; width: 75px; flex-shrink: 0;">Points</label>
+                                    <input type="range" id="wfPoints" min="32" max="256" value="128" step="16" onchange="updateWaveformSettings()" style="flex: 1; min-width: 80px;">
+                                    <span id="wfPointsVal" style="color: #0ff; width: 40px; text-align: right;">128</span>
+                                </div>
+                                <!-- Fade Trail -->
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <label style="color: #888; width: 75px; flex-shrink: 0;">Fade Trail</label>
+                                    <input type="range" id="wfFade" min="5" max="80" value="12" onchange="updateWaveformSettings()" style="flex: 1; min-width: 80px;">
+                                    <span id="wfFadeVal" style="color: #0ff; width: 40px; text-align: right;">0.12</span>
+                                </div>
+                                <!-- Line Width -->
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <label style="color: #888; width: 75px; flex-shrink: 0;">Line Width</label>
+                                    <input type="range" id="wfLineWidth" min="1" max="8" value="3" step="0.5" onchange="updateWaveformSettings()" style="flex: 1; min-width: 80px;">
+                                    <span id="wfLineWidthVal" style="color: #0ff; width: 40px; text-align: right;">2.5</span>
+                                </div>
+                                <!-- Amplitude -->
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <label style="color: #888; width: 75px; flex-shrink: 0;">Amplitude</label>
+                                    <input type="range" id="wfAmplitude" min="20" max="90" value="40" onchange="updateWaveformSettings()" style="flex: 1; min-width: 80px;">
+                                    <span id="wfAmplitudeVal" style="color: #0ff; width: 40px; text-align: right;">0.40</span>
+                                </div>
+                                <!-- Glow -->
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <label style="color: #888; width: 75px; flex-shrink: 0;">Glow</label>
+                                    <div style="flex: 1; display: flex; align-items: center;">
+                                        <input type="checkbox" id="wfGlow" checked onchange="updateWaveformSettings()" style="margin-right: 6px;">
+                                        <span style="color: #888;">Enable glow effect</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
                         <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 15px;">
                             <span style="color: #888; font-size: 0.9em;">Current: <span id="ytCurrentTime">0:00</span></span>
                             <span style="color: #666;">/</span>
@@ -980,13 +1116,32 @@
             <!-- YouTube Transcript -->
             <div class="card">
                 <h2><span class="icon">📝</span> Live Transcript</h2>
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 10px;">
                     <p style="color: #888; margin: 0;">Transcript appears as you play. Click any line to jump to that position.</p>
-                    <label style="display: flex; align-items: center; gap: 5px; color: #888; font-size: 0.9em; cursor: pointer;">
-                        <input type="checkbox" id="ytAutoScroll" checked style="cursor: pointer;">
-                        Auto-scroll
-                    </label>
+                    <div style="display: flex; align-items: center; gap: 15px;">
+                        <!-- Search Box -->
+                        <div style="display: flex; align-items: center; gap: 5px;">
+                            <input type="text" id="transcriptSearch" placeholder="🔍 Search..." 
+                                   oninput="searchTranscript(this.value)"
+                                   style="padding: 5px 10px; border-radius: 5px; border: 1px solid #444; background: #222; color: #fff; width: 150px; font-size: 0.85em;">
+                            <span id="searchResultCount" style="color: #888; font-size: 0.8em;"></span>
+                        </div>
+                        <label style="display: flex; align-items: center; gap: 5px; color: #888; font-size: 0.9em; cursor: pointer;">
+                            <input type="checkbox" id="ytAutoScroll" checked style="cursor: pointer;">
+                            Auto-scroll
+                        </label>
+                    </div>
                 </div>
+                
+                <!-- Speaker Timeline -->
+                <div id="speakerTimeline" style="display: none; margin-bottom: 15px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                        <span style="color: #888; font-size: 0.85em;">📊 Speaker Timeline</span>
+                        <span id="timelineLegend" style="font-size: 0.75em;"></span>
+                    </div>
+                    <div id="timelineBar" style="height: 24px; background: #1a1a2e; border-radius: 5px; overflow: hidden; display: flex; cursor: pointer;"></div>
+                </div>
+                
                 <div id="youtubeTranscript" style="background: rgba(0,0,0,0.3); border-radius: 10px; padding: 15px; min-height: 200px; max-height: 500px; overflow-y: auto; font-family: monospace;">
                     <div style="color: #666;">Start live processing and play the audio to see transcript here...</div>
                 </div>
@@ -1247,6 +1402,33 @@
                 <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
                     <button class="btn btn-danger" onclick="clearAllSpeakers()">Delete All Speakers</button>
                 </div>
+            </div>
+            
+            <!-- Export/Import Speakers -->
+            <div class="card" style="margin-bottom: 30px;">
+                <h2><span class="icon">💾</span> Backup & Restore Speakers</h2>
+                <p style="color: #888; margin-bottom: 20px;">Export enrolled speakers to share or backup, import from file.</p>
+                
+                <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+                    <button class="btn" onclick="exportSpeakers()" style="background: linear-gradient(135deg, #00ff88, #00d4ff);">
+                        📤 Export Speakers
+                    </button>
+                    <label class="btn" style="background: #333; cursor: pointer;">
+                        📥 Import Speakers
+                        <input type="file" accept=".json" onchange="importSpeakers(this)" style="display: none;">
+                    </label>
+                </div>
+                <div id="exportImportStatus" style="margin-top: 15px;"></div>
+            </div>
+            
+            <!-- Speaker Similarity Matrix -->
+            <div class="card" style="margin-bottom: 30px;">
+                <h2><span class="icon">🔗</span> Speaker Similarity Matrix</h2>
+                <p style="color: #888; margin-bottom: 20px;">View how similar enrolled speakers sound to each other.</p>
+                <button class="btn" onclick="showSimilarityMatrix()" style="background: #333; margin-bottom: 15px;">
+                    🔄 Generate Matrix
+                </button>
+                <div id="similarityMatrix" style="overflow-x: auto;"></div>
             </div>
         </div>
         
@@ -2375,6 +2557,9 @@
                 source.connect(micScriptProcessor);
                 micScriptProcessor.connect(micAudioContext.destination);
                 
+                // Initialize mic waveform visualization
+                initMicWaveform(micAudioContext, source);
+                
                 micProcessing = true;
                 micChunkStartTime = Date.now() / 1000;
                 micLastProcessTime = micChunkStartTime;
@@ -2417,6 +2602,9 @@
                 micAudioContext.close();
                 micAudioContext = null;
             }
+            
+            // Stop mic waveform visualization
+            stopMicWaveform();
             
             micAudioChunks = [];
             
@@ -2827,6 +3015,9 @@
                     // Connect: source -> processor -> destination
                     ytMediaSource.connect(ytScriptProcessor);
                     ytScriptProcessor.connect(ytAudioContext.destination);
+                    
+                    // Initialize waveform visualization
+                    initWaveform();
                 } else if (ytAudioContext.state === 'suspended') {
                     await ytAudioContext.resume();
                 }
@@ -3450,6 +3641,1026 @@
                 .sort((a, b) => b.segments - a.segments);
             
             showYoutubeSpeakers(speakers);
+            
+            // Update timeline
+            updateSpeakerTimeline();
+        }
+        
+        // =============================================
+        // Speaker Statistics Functions
+        // =============================================
+        
+        const speakerColors = ['#00d4ff', '#00ff88', '#ff6b6b', '#ffd93d', '#6c5ce7', '#a29bfe', '#fd79a8', '#00cec9', '#e17055', '#74b9ff'];
+        const speakerColorMap = {};
+        let colorIndex = 0;
+        
+        function getSpeakerColor(speaker) {
+            if (!speakerColorMap[speaker]) {
+                speakerColorMap[speaker] = speakerColors[colorIndex % speakerColors.length];
+                colorIndex++;
+            }
+            return speakerColorMap[speaker];
+        }
+        
+        function updateSpeakerTimeline() {
+            if (youtubeTranscriptLines.length === 0) {
+                document.getElementById('speakerTimeline').style.display = 'none';
+                return;
+            }
+            
+            document.getElementById('speakerTimeline').style.display = 'block';
+            
+            const totalDuration = youtubeDuration || youtubeTranscriptLines[youtubeTranscriptLines.length - 1]?.time_seconds + 10 || 100;
+            
+            let html = '';
+            let legendItems = new Set();
+            
+            youtubeTranscriptLines.forEach((line, idx) => {
+                const speaker = line.speaker || 'Unknown';
+                const color = getSpeakerColor(speaker);
+                legendItems.add(`<span style="color: ${color};">●</span> ${speaker}`);
+                
+                const startTime = line.time_seconds || 0;
+                const nextLine = youtubeTranscriptLines[idx + 1];
+                const endTime = nextLine ? (nextLine.time_seconds || startTime + 5) : Math.min(startTime + 10, totalDuration);
+                const widthPct = Math.max(0.5, ((endTime - startTime) / totalDuration) * 100);
+                
+                html += `<div style="width: ${widthPct}%; background: ${color}; height: 100%; opacity: 0.8;" 
+                             title="${speaker}: ${formatTime(startTime)} - ${formatTime(endTime)}" 
+                             onclick="seekToTime(${startTime})"></div>`;
+            });
+            
+            document.getElementById('timelineBar').innerHTML = html;
+            document.getElementById('timelineLegend').innerHTML = Array.from(legendItems).slice(0, 5).join(' &nbsp; ');
+        }
+        
+        // =============================================
+        // Waveform Visualization
+        // =============================================
+        
+        let waveformAnalyser = null;
+        let waveformDataArray = null;
+        let waveformFreqArray = null;
+        let waveformAnimationId = null;
+        let smoothedWaveform = null;
+        let particles = [];  // For particle style
+        let terrainHistory = [];  // For 3D terrain
+        let ribbonHistory = [];  // For ribbon style
+        
+        // Configurable settings
+        const wfDefaults = {
+            style: 'smooth',
+            smoothing: 0.85,
+            points: 128,
+            fade: 0.12,
+            lineWidth: 2.5,
+            amplitude: 0.4,
+            glow: true
+        };
+        
+        let wfSettings = { ...wfDefaults };
+        
+        function toggleWaveformSettings() {
+            const panel = document.getElementById('waveformControls');
+            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+        }
+        
+        function updateWaveformSettings() {
+            wfSettings.style = document.getElementById('waveformStyle').value;
+            wfSettings.smoothing = document.getElementById('wfSmoothing').value / 100;
+            wfSettings.points = parseInt(document.getElementById('wfPoints').value);
+            wfSettings.fade = document.getElementById('wfFade').value / 100;
+            wfSettings.lineWidth = parseFloat(document.getElementById('wfLineWidth').value);
+            wfSettings.amplitude = document.getElementById('wfAmplitude').value / 100;
+            wfSettings.glow = document.getElementById('wfGlow').checked;
+            
+            // Update display values
+            document.getElementById('wfSmoothingVal').textContent = wfSettings.smoothing.toFixed(2);
+            document.getElementById('wfPointsVal').textContent = wfSettings.points;
+            document.getElementById('wfFadeVal').textContent = wfSettings.fade.toFixed(2);
+            document.getElementById('wfLineWidthVal').textContent = wfSettings.lineWidth.toFixed(1);
+            document.getElementById('wfAmplitudeVal').textContent = wfSettings.amplitude.toFixed(2);
+            
+            // Reset smoothed array with new size
+            smoothedWaveform = new Float32Array(wfSettings.points).fill(0.5);
+            particles = [];
+            terrainHistory = [];
+            ribbonHistory = [];
+            
+            if (waveformAnalyser) {
+                waveformAnalyser.smoothingTimeConstant = wfSettings.smoothing;
+            }
+        }
+        
+        function resetWaveformSettings() {
+            wfSettings = { ...wfDefaults };
+            applyWaveformSettingsToUI();
+        }
+        
+        function saveWaveformSettings() {
+            try {
+                localStorage.setItem('waveformSettings', JSON.stringify(wfSettings));
+                // Show brief feedback
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = 'Saved!';
+                btn.style.background = '#00ff88';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.style.background = '#00d4ff';
+                }, 1000);
+            } catch (e) {
+                console.warn('Could not save waveform settings:', e);
+            }
+        }
+        
+        function loadWaveformSettings() {
+            try {
+                const saved = localStorage.getItem('waveformSettings');
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    wfSettings = { ...wfDefaults, ...parsed };
+                    applyWaveformSettingsToUI();
+                }
+            } catch (e) {
+                console.warn('Could not load waveform settings:', e);
+            }
+        }
+        
+        function applyWaveformSettingsToUI() {
+            document.getElementById('waveformStyle').value = wfSettings.style;
+            document.getElementById('wfSmoothing').value = Math.round(wfSettings.smoothing * 100);
+            document.getElementById('wfPoints').value = wfSettings.points;
+            document.getElementById('wfFade').value = Math.round(wfSettings.fade * 100);
+            document.getElementById('wfLineWidth').value = wfSettings.lineWidth;
+            document.getElementById('wfAmplitude').value = Math.round(wfSettings.amplitude * 100);
+            document.getElementById('wfGlow').checked = wfSettings.glow;
+            
+            // Update display values
+            document.getElementById('wfSmoothingVal').textContent = wfSettings.smoothing.toFixed(2);
+            document.getElementById('wfPointsVal').textContent = wfSettings.points;
+            document.getElementById('wfFadeVal').textContent = wfSettings.fade.toFixed(2);
+            document.getElementById('wfLineWidthVal').textContent = wfSettings.lineWidth.toFixed(1);
+            document.getElementById('wfAmplitudeVal').textContent = wfSettings.amplitude.toFixed(2);
+            
+            // Reset arrays
+            smoothedWaveform = new Float32Array(wfSettings.points).fill(0.5);
+            particles = [];
+            terrainHistory = [];
+            ribbonHistory = [];
+            
+            if (waveformAnalyser) {
+                waveformAnalyser.smoothingTimeConstant = wfSettings.smoothing;
+            }
+        }
+        
+        // Load saved settings on page load
+        document.addEventListener('DOMContentLoaded', loadWaveformSettings);
+        
+        function initWaveform() {
+            if (!ytAudioContext || waveformAnalyser) return;
+            
+            try {
+                waveformAnalyser = ytAudioContext.createAnalyser();
+                waveformAnalyser.fftSize = 2048;
+                waveformAnalyser.smoothingTimeConstant = wfSettings.smoothing;
+                waveformDataArray = new Uint8Array(waveformAnalyser.fftSize);
+                waveformFreqArray = new Uint8Array(waveformAnalyser.frequencyBinCount);
+                smoothedWaveform = new Float32Array(wfSettings.points).fill(0.5);
+                
+                // Connect to the audio graph
+                if (ytMediaSource) {
+                    ytMediaSource.connect(waveformAnalyser);
+                }
+                
+                drawWaveform();
+            } catch (e) {
+                console.warn('Waveform init error:', e);
+            }
+        }
+        
+        function getGradient(ctx, canvas, vertical = false) {
+            const gradient = vertical 
+                ? ctx.createLinearGradient(0, 0, 0, canvas.height)
+                : ctx.createLinearGradient(0, 0, canvas.width, 0);
+            gradient.addColorStop(0, '#ff00ff');
+            gradient.addColorStop(0.3, '#ff66ff');
+            gradient.addColorStop(0.5, '#00ffff');
+            gradient.addColorStop(0.7, '#00d4ff');
+            gradient.addColorStop(1, '#00ff88');
+            return gradient;
+        }
+        
+        function processAudioData() {
+            waveformAnalyser.getByteTimeDomainData(waveformDataArray);
+            waveformAnalyser.getByteFrequencyData(waveformFreqArray);
+            
+            const step = Math.floor(waveformDataArray.length / wfSettings.points);
+            for (let i = 0; i < wfSettings.points; i++) {
+                let sum = 0;
+                for (let j = 0; j < step; j++) {
+                    sum += waveformDataArray[i * step + j] / 255.0;
+                }
+                const newValue = sum / step;
+                smoothedWaveform[i] = smoothedWaveform[i] * wfSettings.smoothing + newValue * (1 - wfSettings.smoothing);
+            }
+        }
+        
+        // Style 1: Smooth Wave (original)
+        function drawSmoothWave(ctx, canvas, gradient) {
+            const centerY = canvas.height / 2;
+            const amplitude = canvas.height * wfSettings.amplitude;
+            const sliceWidth = canvas.width / (wfSettings.points - 1);
+            
+            ctx.beginPath();
+            ctx.lineWidth = wfSettings.lineWidth;
+            ctx.strokeStyle = gradient;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            
+            let y = centerY + (smoothedWaveform[0] - 0.5) * amplitude * 2;
+            ctx.moveTo(0, y);
+            
+            for (let i = 1; i < wfSettings.points; i++) {
+                const currY = centerY + (smoothedWaveform[i] - 0.5) * amplitude * 2;
+                const prevX = (i - 1) * sliceWidth;
+                const currX = i * sliceWidth;
+                const cpX = (prevX + currX) / 2;
+                ctx.quadraticCurveTo(cpX, centerY + (smoothedWaveform[i-1] - 0.5) * amplitude * 2, currX, currY);
+            }
+            ctx.stroke();
+            
+            if (wfSettings.glow) {
+                ctx.beginPath();
+                ctx.lineWidth = wfSettings.lineWidth * 3;
+                ctx.globalAlpha = 0.2;
+                y = centerY + (smoothedWaveform[0] - 0.5) * amplitude * 2;
+                ctx.moveTo(0, y);
+                for (let i = 1; i < wfSettings.points; i++) {
+                    const currY = centerY + (smoothedWaveform[i] - 0.5) * amplitude * 2;
+                    const prevX = (i - 1) * sliceWidth;
+                    const currX = i * sliceWidth;
+                    ctx.quadraticCurveTo((prevX + currX) / 2, centerY + (smoothedWaveform[i-1] - 0.5) * amplitude * 2, currX, currY);
+                }
+                ctx.stroke();
+                ctx.globalAlpha = 1;
+            }
+        }
+        
+        // Style 2: Frequency Bars
+        function drawBars(ctx, canvas, gradient) {
+            const barCount = Math.min(64, wfSettings.points);
+            const barWidth = (canvas.width / barCount) * 0.8;
+            const gap = (canvas.width / barCount) * 0.2;
+            
+            for (let i = 0; i < barCount; i++) {
+                const value = waveformFreqArray[i * 4] / 255;
+                const barHeight = value * canvas.height * wfSettings.amplitude * 2;
+                const x = i * (barWidth + gap);
+                const y = canvas.height - barHeight;
+                
+                const barGrad = ctx.createLinearGradient(x, canvas.height, x, y);
+                barGrad.addColorStop(0, '#ff00ff');
+                barGrad.addColorStop(1, '#00ffff');
+                
+                ctx.fillStyle = barGrad;
+                ctx.fillRect(x, y, barWidth, barHeight);
+                
+                if (wfSettings.glow) {
+                    ctx.shadowColor = '#00ffff';
+                    ctx.shadowBlur = 10;
+                    ctx.fillRect(x, y, barWidth, barHeight);
+                    ctx.shadowBlur = 0;
+                }
+            }
+        }
+        
+        // Style 3: Circular
+        function drawCircular(ctx, canvas) {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const baseRadius = Math.min(canvas.width, canvas.height) * 0.25;
+            
+            ctx.beginPath();
+            ctx.lineWidth = wfSettings.lineWidth;
+            
+            const circGrad = ctx.createRadialGradient(centerX, centerY, baseRadius * 0.5, centerX, centerY, baseRadius * 1.5);
+            circGrad.addColorStop(0, '#ff00ff');
+            circGrad.addColorStop(0.5, '#00ffff');
+            circGrad.addColorStop(1, '#00ff88');
+            ctx.strokeStyle = circGrad;
+            
+            for (let i = 0; i <= wfSettings.points; i++) {
+                const angle = (i / wfSettings.points) * Math.PI * 2 - Math.PI / 2;
+                const value = smoothedWaveform[i % wfSettings.points];
+                const radius = baseRadius + (value - 0.5) * baseRadius * wfSettings.amplitude * 4;
+                const x = centerX + Math.cos(angle) * radius;
+                const y = centerY + Math.sin(angle) * radius;
+                
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.closePath();
+            ctx.stroke();
+            
+            if (wfSettings.glow) {
+                ctx.globalAlpha = 0.3;
+                ctx.lineWidth = wfSettings.lineWidth * 3;
+                ctx.stroke();
+                ctx.globalAlpha = 1;
+            }
+        }
+        
+        // Style 4: Mirror Wave
+        function drawMirror(ctx, canvas, gradient) {
+            const centerY = canvas.height / 2;
+            const amplitude = canvas.height * wfSettings.amplitude * 0.5;
+            const sliceWidth = canvas.width / wfSettings.points;
+            
+            // Top wave
+            ctx.beginPath();
+            ctx.lineWidth = wfSettings.lineWidth;
+            ctx.strokeStyle = gradient;
+            ctx.moveTo(0, centerY);
+            
+            for (let i = 0; i < wfSettings.points; i++) {
+                const x = i * sliceWidth;
+                const y = centerY - Math.abs(smoothedWaveform[i] - 0.5) * amplitude * 4;
+                ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+            
+            // Bottom wave (mirrored)
+            ctx.beginPath();
+            ctx.moveTo(0, centerY);
+            for (let i = 0; i < wfSettings.points; i++) {
+                const x = i * sliceWidth;
+                const y = centerY + Math.abs(smoothedWaveform[i] - 0.5) * amplitude * 4;
+                ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+            
+            // Center line
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+            ctx.lineWidth = 1;
+            ctx.moveTo(0, centerY);
+            ctx.lineTo(canvas.width, centerY);
+            ctx.stroke();
+        }
+        
+        // Style 5: Oscilloscope
+        function drawOscilloscope(ctx, canvas) {
+            const sliceWidth = canvas.width / waveformDataArray.length;
+            
+            // Grid
+            ctx.strokeStyle = 'rgba(0, 255, 136, 0.1)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= 4; i++) {
+                const y = (canvas.height / 4) * i;
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+            
+            // Waveform
+            ctx.beginPath();
+            ctx.lineWidth = wfSettings.lineWidth;
+            ctx.strokeStyle = '#00ff88';
+            ctx.shadowColor = '#00ff88';
+            ctx.shadowBlur = wfSettings.glow ? 8 : 0;
+            
+            let x = 0;
+            for (let i = 0; i < waveformDataArray.length; i++) {
+                const v = waveformDataArray[i] / 128.0;
+                const y = (v * canvas.height / 2) * wfSettings.amplitude * 2 + canvas.height * (1 - wfSettings.amplitude);
+                
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+                x += sliceWidth;
+            }
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+        }
+        
+        // Style 6: Particles
+        function drawParticles(ctx, canvas) {
+            // Spawn new particles based on audio intensity
+            const avgIntensity = smoothedWaveform.reduce((a, b) => a + Math.abs(b - 0.5), 0) / wfSettings.points;
+            
+            if (Math.random() < avgIntensity * 3) {
+                for (let i = 0; i < 3; i++) {
+                    particles.push({
+                        x: Math.random() * canvas.width,
+                        y: canvas.height,
+                        vx: (Math.random() - 0.5) * 2,
+                        vy: -Math.random() * 3 * wfSettings.amplitude * 5 - 1,
+                        life: 1,
+                        size: Math.random() * 4 + 2,
+                        hue: Math.random() * 180 + 180  // Cyan to magenta
+                    });
+                }
+            }
+            
+            // Update and draw particles
+            particles = particles.filter(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.02;  // Gravity
+                p.life -= 0.015;
+                
+                if (p.life > 0) {
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+                    ctx.fillStyle = `hsla(${p.hue}, 100%, 60%, ${p.life})`;
+                    ctx.fill();
+                    
+                    if (wfSettings.glow) {
+                        ctx.shadowColor = `hsla(${p.hue}, 100%, 60%, 1)`;
+                        ctx.shadowBlur = 10;
+                        ctx.fill();
+                        ctx.shadowBlur = 0;
+                    }
+                    return true;
+                }
+                return false;
+            });
+        }
+        
+        // Style 7: 3D Terrain
+        function drawTerrain(ctx, canvas) {
+            const rowHeight = 4;
+            const maxRows = Math.floor(canvas.height / rowHeight);
+            
+            // Add current waveform to history
+            terrainHistory.unshift([...smoothedWaveform]);
+            if (terrainHistory.length > maxRows) terrainHistory.pop();
+            
+            for (let row = 0; row < terrainHistory.length; row++) {
+                const data = terrainHistory[row];
+                const y = row * rowHeight;
+                const alpha = 1 - (row / maxRows);
+                const sliceWidth = canvas.width / data.length;
+                
+                ctx.beginPath();
+                ctx.strokeStyle = `rgba(0, 255, 255, ${alpha * 0.8})`;
+                ctx.lineWidth = 1;
+                
+                for (let i = 0; i < data.length; i++) {
+                    const x = i * sliceWidth;
+                    const offsetY = y + (data[i] - 0.5) * 30 * wfSettings.amplitude;
+                    if (i === 0) ctx.moveTo(x, offsetY);
+                    else ctx.lineTo(x, offsetY);
+                }
+                ctx.stroke();
+            }
+        }
+        
+        // Style 8: Ribbon
+        function drawRibbon(ctx, canvas) {
+            const maxHistory = 20;
+            ribbonHistory.unshift([...smoothedWaveform]);
+            if (ribbonHistory.length > maxHistory) ribbonHistory.pop();
+            
+            const centerY = canvas.height / 2;
+            const amplitude = canvas.height * wfSettings.amplitude;
+            
+            for (let h = ribbonHistory.length - 1; h >= 0; h--) {
+                const data = ribbonHistory[h];
+                const alpha = 1 - (h / maxHistory);
+                const offset = h * 2;
+                const sliceWidth = canvas.width / data.length;
+                
+                ctx.beginPath();
+                ctx.lineWidth = wfSettings.lineWidth * (1 - h / maxHistory * 0.5);
+                
+                const hue = 280 - (h / maxHistory) * 100;  // Purple to cyan
+                ctx.strokeStyle = `hsla(${hue}, 100%, 60%, ${alpha})`;
+                
+                for (let i = 0; i < data.length; i++) {
+                    const x = i * sliceWidth;
+                    const y = centerY + (data[i] - 0.5) * amplitude * 2 + offset;
+                    if (i === 0) ctx.moveTo(x, y);
+                    else {
+                        const prevX = (i - 1) * sliceWidth;
+                        const cpX = (prevX + x) / 2;
+                        ctx.quadraticCurveTo(cpX, centerY + (data[i-1] - 0.5) * amplitude * 2 + offset, x, y);
+                    }
+                }
+                ctx.stroke();
+            }
+        }
+        
+        function drawWaveform() {
+            const canvas = document.getElementById('waveformCanvas');
+            if (!canvas || !waveformAnalyser) return;
+            
+            const ctx = canvas.getContext('2d');
+            const container = canvas.parentElement;
+            
+            canvas.width = container.offsetWidth;
+            canvas.height = container.offsetHeight;
+            
+            if (!smoothedWaveform || smoothedWaveform.length !== wfSettings.points) {
+                smoothedWaveform = new Float32Array(wfSettings.points).fill(0.5);
+            }
+            
+            function draw() {
+                waveformAnimationId = requestAnimationFrame(draw);
+                
+                processAudioData();
+                
+                // Clear with fade
+                ctx.fillStyle = `rgba(26, 26, 46, ${wfSettings.fade})`;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                const gradient = getGradient(ctx, canvas);
+                
+                // Draw based on selected style
+                switch (wfSettings.style) {
+                    case 'smooth': drawSmoothWave(ctx, canvas, gradient); break;
+                    case 'bars': drawBars(ctx, canvas, gradient); break;
+                    case 'circular': drawCircular(ctx, canvas); break;
+                    case 'mirror': drawMirror(ctx, canvas, gradient); break;
+                    case 'oscilloscope': drawOscilloscope(ctx, canvas); break;
+                    case 'particles': drawParticles(ctx, canvas); break;
+                    case 'terrain': drawTerrain(ctx, canvas); break;
+                    case 'ribbon': drawRibbon(ctx, canvas); break;
+                }
+            }
+            
+            draw();
+        }
+        
+        function stopWaveform() {
+            if (waveformAnimationId) {
+                cancelAnimationFrame(waveformAnimationId);
+                waveformAnimationId = null;
+            }
+        }
+        
+        // =============================================
+        // Mic Waveform Visualization
+        // =============================================
+        
+        let micWaveformAnalyser = null;
+        let micWaveformDataArray = null;
+        let micWaveformFreqArray = null;
+        let micWaveformAnimationId = null;
+        let micSmoothedWaveform = null;
+        let micParticles = [];
+        let micTerrainHistory = [];
+        let micRibbonHistory = [];
+        
+        let micWfSettings = { ...wfDefaults };
+        
+        function toggleMicWaveformSettings() {
+            const panel = document.getElementById('micWaveformControls');
+            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+        }
+        
+        function updateMicWaveformSettings() {
+            micWfSettings.style = document.getElementById('micWaveformStyle').value;
+            micWfSettings.smoothing = document.getElementById('micWfSmoothing').value / 100;
+            micWfSettings.points = parseInt(document.getElementById('micWfPoints').value);
+            micWfSettings.fade = document.getElementById('micWfFade').value / 100;
+            micWfSettings.lineWidth = parseFloat(document.getElementById('micWfLineWidth').value);
+            micWfSettings.amplitude = document.getElementById('micWfAmplitude').value / 100;
+            micWfSettings.glow = document.getElementById('micWfGlow').checked;
+            
+            document.getElementById('micWfSmoothingVal').textContent = micWfSettings.smoothing.toFixed(2);
+            document.getElementById('micWfPointsVal').textContent = micWfSettings.points;
+            document.getElementById('micWfFadeVal').textContent = micWfSettings.fade.toFixed(2);
+            document.getElementById('micWfLineWidthVal').textContent = micWfSettings.lineWidth.toFixed(1);
+            document.getElementById('micWfAmplitudeVal').textContent = micWfSettings.amplitude.toFixed(2);
+            
+            micSmoothedWaveform = new Float32Array(micWfSettings.points).fill(0.5);
+            micParticles = [];
+            micTerrainHistory = [];
+            micRibbonHistory = [];
+            
+            if (micWaveformAnalyser) {
+                micWaveformAnalyser.smoothingTimeConstant = micWfSettings.smoothing;
+            }
+        }
+        
+        function resetMicWaveformSettings() {
+            micWfSettings = { ...wfDefaults };
+            applyMicWaveformSettingsToUI();
+        }
+        
+        function saveMicWaveformSettings() {
+            try {
+                localStorage.setItem('micWaveformSettings', JSON.stringify(micWfSettings));
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = 'Saved!';
+                setTimeout(() => { btn.textContent = originalText; }, 1000);
+            } catch (e) {
+                console.warn('Could not save mic waveform settings:', e);
+            }
+        }
+        
+        function loadMicWaveformSettings() {
+            try {
+                const saved = localStorage.getItem('micWaveformSettings');
+                if (saved) {
+                    micWfSettings = { ...wfDefaults, ...JSON.parse(saved) };
+                    applyMicWaveformSettingsToUI();
+                }
+            } catch (e) {
+                console.warn('Could not load mic waveform settings:', e);
+            }
+        }
+        
+        function applyMicWaveformSettingsToUI() {
+            document.getElementById('micWaveformStyle').value = micWfSettings.style;
+            document.getElementById('micWfSmoothing').value = Math.round(micWfSettings.smoothing * 100);
+            document.getElementById('micWfPoints').value = micWfSettings.points;
+            document.getElementById('micWfFade').value = Math.round(micWfSettings.fade * 100);
+            document.getElementById('micWfLineWidth').value = micWfSettings.lineWidth;
+            document.getElementById('micWfAmplitude').value = Math.round(micWfSettings.amplitude * 100);
+            document.getElementById('micWfGlow').checked = micWfSettings.glow;
+            
+            document.getElementById('micWfSmoothingVal').textContent = micWfSettings.smoothing.toFixed(2);
+            document.getElementById('micWfPointsVal').textContent = micWfSettings.points;
+            document.getElementById('micWfFadeVal').textContent = micWfSettings.fade.toFixed(2);
+            document.getElementById('micWfLineWidthVal').textContent = micWfSettings.lineWidth.toFixed(1);
+            document.getElementById('micWfAmplitudeVal').textContent = micWfSettings.amplitude.toFixed(2);
+            
+            micSmoothedWaveform = new Float32Array(micWfSettings.points).fill(0.5);
+            micParticles = [];
+            micTerrainHistory = [];
+            micRibbonHistory = [];
+        }
+        
+        function initMicWaveform(audioContext, sourceNode) {
+            if (!audioContext || micWaveformAnalyser) return;
+            
+            try {
+                micWaveformAnalyser = audioContext.createAnalyser();
+                micWaveformAnalyser.fftSize = 2048;
+                micWaveformAnalyser.smoothingTimeConstant = micWfSettings.smoothing;
+                micWaveformDataArray = new Uint8Array(micWaveformAnalyser.fftSize);
+                micWaveformFreqArray = new Uint8Array(micWaveformAnalyser.frequencyBinCount);
+                micSmoothedWaveform = new Float32Array(micWfSettings.points).fill(0.5);
+                
+                sourceNode.connect(micWaveformAnalyser);
+                
+                document.getElementById('micWaveformContainer').style.display = 'block';
+                drawMicWaveform();
+            } catch (e) {
+                console.warn('Mic waveform init error:', e);
+            }
+        }
+        
+        function drawMicWaveform() {
+            const canvas = document.getElementById('micWaveformCanvas');
+            if (!canvas || !micWaveformAnalyser) return;
+            
+            const ctx = canvas.getContext('2d');
+            const container = canvas.parentElement;
+            
+            canvas.width = container.offsetWidth;
+            canvas.height = container.offsetHeight;
+            
+            if (!micSmoothedWaveform || micSmoothedWaveform.length !== micWfSettings.points) {
+                micSmoothedWaveform = new Float32Array(micWfSettings.points).fill(0.5);
+            }
+            
+            function draw() {
+                micWaveformAnimationId = requestAnimationFrame(draw);
+                
+                micWaveformAnalyser.getByteTimeDomainData(micWaveformDataArray);
+                micWaveformAnalyser.getByteFrequencyData(micWaveformFreqArray);
+                
+                const step = Math.floor(micWaveformDataArray.length / micWfSettings.points);
+                for (let i = 0; i < micWfSettings.points; i++) {
+                    let sum = 0;
+                    for (let j = 0; j < step; j++) {
+                        sum += micWaveformDataArray[i * step + j] / 255.0;
+                    }
+                    const newValue = sum / step;
+                    micSmoothedWaveform[i] = micSmoothedWaveform[i] * micWfSettings.smoothing + newValue * (1 - micWfSettings.smoothing);
+                }
+                
+                ctx.fillStyle = `rgba(26, 26, 46, ${micWfSettings.fade})`;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                const gradient = ctx.createLinearGradient(0, 0, canvas.width, 0);
+                gradient.addColorStop(0, '#00ff88');
+                gradient.addColorStop(0.5, '#00ffff');
+                gradient.addColorStop(1, '#ff00ff');
+                
+                // Use same drawing functions but with mic data
+                switch (micWfSettings.style) {
+                    case 'smooth': drawMicSmoothWave(ctx, canvas, gradient); break;
+                    case 'bars': drawMicBars(ctx, canvas, gradient); break;
+                    case 'circular': drawMicCircular(ctx, canvas); break;
+                    case 'mirror': drawMicMirror(ctx, canvas, gradient); break;
+                    case 'oscilloscope': drawMicOscilloscope(ctx, canvas); break;
+                    case 'particles': drawMicParticles(ctx, canvas); break;
+                    case 'terrain': drawMicTerrain(ctx, canvas); break;
+                    case 'ribbon': drawMicRibbon(ctx, canvas); break;
+                }
+            }
+            
+            draw();
+        }
+        
+        // Mic-specific drawing functions (use mic settings and data)
+        function drawMicSmoothWave(ctx, canvas, gradient) {
+            const centerY = canvas.height / 2;
+            const amplitude = canvas.height * micWfSettings.amplitude;
+            const sliceWidth = canvas.width / (micWfSettings.points - 1);
+            
+            ctx.beginPath();
+            ctx.lineWidth = micWfSettings.lineWidth;
+            ctx.strokeStyle = gradient;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            
+            let y = centerY + (micSmoothedWaveform[0] - 0.5) * amplitude * 2;
+            ctx.moveTo(0, y);
+            
+            for (let i = 1; i < micWfSettings.points; i++) {
+                const currY = centerY + (micSmoothedWaveform[i] - 0.5) * amplitude * 2;
+                const prevX = (i - 1) * sliceWidth;
+                const currX = i * sliceWidth;
+                ctx.quadraticCurveTo((prevX + currX) / 2, centerY + (micSmoothedWaveform[i-1] - 0.5) * amplitude * 2, currX, currY);
+            }
+            ctx.stroke();
+            
+            if (micWfSettings.glow) {
+                ctx.beginPath();
+                ctx.lineWidth = micWfSettings.lineWidth * 3;
+                ctx.globalAlpha = 0.2;
+                y = centerY + (micSmoothedWaveform[0] - 0.5) * amplitude * 2;
+                ctx.moveTo(0, y);
+                for (let i = 1; i < micWfSettings.points; i++) {
+                    const currY = centerY + (micSmoothedWaveform[i] - 0.5) * amplitude * 2;
+                    const prevX = (i - 1) * sliceWidth;
+                    const currX = i * sliceWidth;
+                    ctx.quadraticCurveTo((prevX + currX) / 2, centerY + (micSmoothedWaveform[i-1] - 0.5) * amplitude * 2, currX, currY);
+                }
+                ctx.stroke();
+                ctx.globalAlpha = 1;
+            }
+        }
+        
+        function drawMicBars(ctx, canvas, gradient) {
+            const barCount = Math.min(64, micWfSettings.points);
+            const barWidth = (canvas.width / barCount) * 0.8;
+            const gap = (canvas.width / barCount) * 0.2;
+            
+            for (let i = 0; i < barCount; i++) {
+                const value = micWaveformFreqArray[i * 4] / 255;
+                const barHeight = value * canvas.height * micWfSettings.amplitude * 2;
+                const x = i * (barWidth + gap);
+                const y = canvas.height - barHeight;
+                
+                const barGrad = ctx.createLinearGradient(x, canvas.height, x, y);
+                barGrad.addColorStop(0, '#00ff88');
+                barGrad.addColorStop(1, '#00ffff');
+                
+                ctx.fillStyle = barGrad;
+                ctx.fillRect(x, y, barWidth, barHeight);
+            }
+        }
+        
+        function drawMicCircular(ctx, canvas) {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const baseRadius = Math.min(canvas.width, canvas.height) * 0.25;
+            
+            ctx.beginPath();
+            ctx.lineWidth = micWfSettings.lineWidth;
+            
+            const circGrad = ctx.createRadialGradient(centerX, centerY, baseRadius * 0.5, centerX, centerY, baseRadius * 1.5);
+            circGrad.addColorStop(0, '#00ff88');
+            circGrad.addColorStop(0.5, '#00ffff');
+            circGrad.addColorStop(1, '#ff00ff');
+            ctx.strokeStyle = circGrad;
+            
+            for (let i = 0; i <= micWfSettings.points; i++) {
+                const angle = (i / micWfSettings.points) * Math.PI * 2 - Math.PI / 2;
+                const value = micSmoothedWaveform[i % micWfSettings.points];
+                const radius = baseRadius + (value - 0.5) * baseRadius * micWfSettings.amplitude * 4;
+                const x = centerX + Math.cos(angle) * radius;
+                const y = centerY + Math.sin(angle) * radius;
+                
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.closePath();
+            ctx.stroke();
+        }
+        
+        function drawMicMirror(ctx, canvas, gradient) {
+            const centerY = canvas.height / 2;
+            const amplitude = canvas.height * micWfSettings.amplitude * 0.5;
+            const sliceWidth = canvas.width / micWfSettings.points;
+            
+            ctx.lineWidth = micWfSettings.lineWidth;
+            ctx.strokeStyle = gradient;
+            
+            ctx.beginPath();
+            ctx.moveTo(0, centerY);
+            for (let i = 0; i < micWfSettings.points; i++) {
+                ctx.lineTo(i * sliceWidth, centerY - Math.abs(micSmoothedWaveform[i] - 0.5) * amplitude * 4);
+            }
+            ctx.stroke();
+            
+            ctx.beginPath();
+            ctx.moveTo(0, centerY);
+            for (let i = 0; i < micWfSettings.points; i++) {
+                ctx.lineTo(i * sliceWidth, centerY + Math.abs(micSmoothedWaveform[i] - 0.5) * amplitude * 4);
+            }
+            ctx.stroke();
+        }
+        
+        function drawMicOscilloscope(ctx, canvas) {
+            ctx.strokeStyle = 'rgba(0, 255, 136, 0.1)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= 4; i++) {
+                ctx.beginPath();
+                ctx.moveTo(0, (canvas.height / 4) * i);
+                ctx.lineTo(canvas.width, (canvas.height / 4) * i);
+                ctx.stroke();
+            }
+            
+            ctx.beginPath();
+            ctx.lineWidth = micWfSettings.lineWidth;
+            ctx.strokeStyle = '#00ff88';
+            ctx.shadowColor = '#00ff88';
+            ctx.shadowBlur = micWfSettings.glow ? 8 : 0;
+            
+            const sliceWidth = canvas.width / micWaveformDataArray.length;
+            for (let i = 0; i < micWaveformDataArray.length; i++) {
+                const v = micWaveformDataArray[i] / 128.0;
+                const y = (v * canvas.height / 2) * micWfSettings.amplitude * 2 + canvas.height * (1 - micWfSettings.amplitude);
+                if (i === 0) ctx.moveTo(i * sliceWidth, y);
+                else ctx.lineTo(i * sliceWidth, y);
+            }
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+        }
+        
+        function drawMicParticles(ctx, canvas) {
+            const avgIntensity = micSmoothedWaveform.reduce((a, b) => a + Math.abs(b - 0.5), 0) / micWfSettings.points;
+            
+            if (Math.random() < avgIntensity * 3) {
+                for (let i = 0; i < 3; i++) {
+                    micParticles.push({
+                        x: Math.random() * canvas.width,
+                        y: canvas.height,
+                        vx: (Math.random() - 0.5) * 2,
+                        vy: -Math.random() * 3 * micWfSettings.amplitude * 5 - 1,
+                        life: 1,
+                        size: Math.random() * 4 + 2,
+                        hue: Math.random() * 60 + 120  // Green to cyan
+                    });
+                }
+            }
+            
+            micParticles = micParticles.filter(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.02;
+                p.life -= 0.015;
+                
+                if (p.life > 0) {
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+                    ctx.fillStyle = `hsla(${p.hue}, 100%, 60%, ${p.life})`;
+                    ctx.fill();
+                    return true;
+                }
+                return false;
+            });
+        }
+        
+        function drawMicTerrain(ctx, canvas) {
+            const rowHeight = 4;
+            const maxRows = Math.floor(canvas.height / rowHeight);
+            
+            micTerrainHistory.unshift([...micSmoothedWaveform]);
+            if (micTerrainHistory.length > maxRows) micTerrainHistory.pop();
+            
+            for (let row = 0; row < micTerrainHistory.length; row++) {
+                const data = micTerrainHistory[row];
+                const y = row * rowHeight;
+                const alpha = 1 - (row / maxRows);
+                const sliceWidth = canvas.width / data.length;
+                
+                ctx.beginPath();
+                ctx.strokeStyle = `rgba(0, 255, 136, ${alpha * 0.8})`;
+                ctx.lineWidth = 1;
+                
+                for (let i = 0; i < data.length; i++) {
+                    const x = i * sliceWidth;
+                    const offsetY = y + (data[i] - 0.5) * 30 * micWfSettings.amplitude;
+                    if (i === 0) ctx.moveTo(x, offsetY);
+                    else ctx.lineTo(x, offsetY);
+                }
+                ctx.stroke();
+            }
+        }
+        
+        function drawMicRibbon(ctx, canvas) {
+            const maxHistory = 20;
+            micRibbonHistory.unshift([...micSmoothedWaveform]);
+            if (micRibbonHistory.length > maxHistory) micRibbonHistory.pop();
+            
+            const centerY = canvas.height / 2;
+            const amplitude = canvas.height * micWfSettings.amplitude;
+            
+            for (let h = micRibbonHistory.length - 1; h >= 0; h--) {
+                const data = micRibbonHistory[h];
+                const alpha = 1 - (h / maxHistory);
+                const offset = h * 2;
+                const sliceWidth = canvas.width / data.length;
+                
+                ctx.beginPath();
+                ctx.lineWidth = micWfSettings.lineWidth * (1 - h / maxHistory * 0.5);
+                
+                const hue = 140 + (h / maxHistory) * 40;
+                ctx.strokeStyle = `hsla(${hue}, 100%, 60%, ${alpha})`;
+                
+                for (let i = 0; i < data.length; i++) {
+                    const x = i * sliceWidth;
+                    const y = centerY + (data[i] - 0.5) * amplitude * 2 + offset;
+                    if (i === 0) ctx.moveTo(x, y);
+                    else {
+                        const prevX = (i - 1) * sliceWidth;
+                        ctx.quadraticCurveTo((prevX + x) / 2, centerY + (data[i-1] - 0.5) * amplitude * 2 + offset, x, y);
+                    }
+                }
+                ctx.stroke();
+            }
+        }
+        
+        function stopMicWaveform() {
+            if (micWaveformAnimationId) {
+                cancelAnimationFrame(micWaveformAnimationId);
+                micWaveformAnimationId = null;
+            }
+            micWaveformAnalyser = null;
+            document.getElementById('micWaveformContainer').style.display = 'none';
+        }
+        
+        // Load mic waveform settings on page load
+        document.addEventListener('DOMContentLoaded', loadMicWaveformSettings);
+        
+        // =============================================
+        // Transcript Search
+        // =============================================
+        
+        let currentSearchTerm = '';
+        
+        function searchTranscript(term) {
+            currentSearchTerm = term.toLowerCase().trim();
+            const container = document.getElementById('youtubeTranscript');
+            const lines = container.querySelectorAll('.transcript-line');
+            const countEl = document.getElementById('searchResultCount');
+            
+            let matchCount = 0;
+            
+            lines.forEach(line => {
+                const textSpan = line.querySelector('.live-text') || line.querySelector('span:last-child');
+                if (!textSpan) return;
+                
+                const originalText = textSpan.dataset.originalText || textSpan.textContent;
+                textSpan.dataset.originalText = originalText;
+                
+                if (currentSearchTerm && originalText.toLowerCase().includes(currentSearchTerm)) {
+                    // Highlight matches
+                    const regex = new RegExp(`(${escapeRegex(currentSearchTerm)})`, 'gi');
+                    textSpan.innerHTML = originalText.replace(regex, '<mark style="background: #ffaa00; color: #000; padding: 0 2px; border-radius: 2px;">$1</mark>');
+                    line.style.display = 'block';
+                    matchCount++;
+                } else if (currentSearchTerm) {
+                    // Hide non-matching lines
+                    line.style.display = 'none';
+                } else {
+                    // Show all and remove highlights
+                    textSpan.innerHTML = originalText;
+                    line.style.display = 'block';
+                }
+            });
+            
+            // Update count
+            if (currentSearchTerm) {
+                countEl.textContent = matchCount > 0 ? `${matchCount} found` : 'No matches';
+                countEl.style.color = matchCount > 0 ? '#00ff88' : '#ff4444';
+            } else {
+                countEl.textContent = '';
+            }
+        }
+        
+        function escapeRegex(string) {
+            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         }
         
         function highlightCurrentTranscriptLine(currentTime) {
@@ -3587,12 +4798,24 @@
             consecutiveChanges = 0;
             chunkTextHistory = []; // Reset chunk history
             
+            // Reset speaker colors for fresh assignment
+            Object.keys(speakerColorMap).forEach(k => delete speakerColorMap[k]);
+            colorIndex = 0;
+            
             // Reset session speaker clustering on backend
             fetch('/api/reset-session-speakers', { method: 'POST' });
             currentSpeakerId = 0;
             
             document.getElementById('youtubeTranscript').innerHTML = '<div style="color: #666;">Start live processing and play the audio to see transcript here...</div>';
             document.getElementById('youtubeSpeakerResults').style.display = 'none';
+            
+            // Hide timeline
+            document.getElementById('speakerTimeline').style.display = 'none';
+            
+            // Clear search
+            document.getElementById('transcriptSearch').value = '';
+            document.getElementById('searchResultCount').textContent = '';
+            currentSearchTerm = '';
         }
         
         // =============================================
@@ -3764,7 +4987,7 @@
                 const select = document.getElementById('parakeetModelSelect');
                 const modelName = select ? select.value : 'mlx-community/parakeet-tdt-0.6b-v3';
                 
-                const res2 = await fetch('/api/switch-parakeet-model', {
+                const res2 = await fetch('/api/switch-model', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ model: modelName })
@@ -3832,6 +5055,121 @@
             } else {
                 label.innerHTML = '<span>Click or drag audio file here</span>';
                 label.classList.remove('has-file');
+            }
+        }
+        
+        // =============================================
+        // Export/Import Speaker Functions
+        // =============================================
+        
+        async function exportSpeakers() {
+            try {
+                const res = await fetch('/api/speakers/export');
+                const data = await res.json();
+                
+                if (data.success) {
+                    const blob = new Blob([JSON.stringify(data.data, null, 2)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `speakers_backup_${new Date().toISOString().split('T')[0]}.json`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    
+                    document.getElementById('exportImportStatus').innerHTML = 
+                        `<div style="color: #00ff88;">✅ Exported ${data.count} speakers</div>`;
+                }
+            } catch (error) {
+                document.getElementById('exportImportStatus').innerHTML = 
+                    `<div style="color: #ff4444;">❌ Export failed: ${error.message}</div>`;
+            }
+        }
+        
+        async function importSpeakers(input) {
+            const file = input.files[0];
+            if (!file) return;
+            
+            try {
+                const text = await file.text();
+                const data = JSON.parse(text);
+                
+                const res = await fetch('/api/speakers/import', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await res.json();
+                
+                if (result.success) {
+                    document.getElementById('exportImportStatus').innerHTML = 
+                        `<div style="color: #00ff88;">✅ Imported ${result.imported} speakers (${result.skipped} skipped as duplicates)</div>`;
+                    checkStatus();
+                } else {
+                    throw new Error(result.error);
+                }
+            } catch (error) {
+                document.getElementById('exportImportStatus').innerHTML = 
+                    `<div style="color: #ff4444;">❌ Import failed: ${error.message}</div>`;
+            }
+            
+            input.value = '';
+        }
+        
+        async function showSimilarityMatrix() {
+            const container = document.getElementById('similarityMatrix');
+            container.innerHTML = '<div style="color: #888;">Loading...</div>';
+            
+            try {
+                const res = await fetch('/api/speakers/similarity-matrix');
+                const data = await res.json();
+                
+                if (!data.success || data.names.length === 0) {
+                    container.innerHTML = '<div style="color: #888;">No speakers enrolled. Enroll speakers first to see similarity.</div>';
+                    return;
+                }
+                
+                let html = '<table style="width: 100%; border-collapse: collapse; font-size: 0.85em;">';
+                html += '<tr><th style="padding: 10px; border: 1px solid #333; background: rgba(0,0,0,0.2);"></th>';
+                data.names.forEach(name => {
+                    html += `<th style="padding: 10px; border: 1px solid #333; color: #00d4ff; background: rgba(0,0,0,0.2);">${name}</th>`;
+                });
+                html += '</tr>';
+                
+                data.matrix.forEach((row, i) => {
+                    html += `<tr><th style="padding: 10px; border: 1px solid #333; color: #00d4ff; background: rgba(0,0,0,0.2);">${data.names[i]}</th>`;
+                    row.forEach((val, j) => {
+                        let bgColor = 'transparent';
+                        let textColor = '#666';
+                        
+                        if (i === j) {
+                            bgColor = 'rgba(0,255,136,0.2)';
+                            textColor = '#00ff88';
+                        } else if (val > 0.7) {
+                            bgColor = 'rgba(255,68,68,0.2)';
+                            textColor = '#ff4444';
+                        } else if (val > 0.5) {
+                            bgColor = 'rgba(255,170,0,0.2)';
+                            textColor = '#ffaa00';
+                        }
+                        
+                        html += `<td style="padding: 10px; border: 1px solid #333; text-align: center; color: ${textColor}; background: ${bgColor}; font-weight: ${val > 0.5 ? 'bold' : 'normal'};">${val.toFixed(2)}</td>`;
+                    });
+                    html += '</tr>';
+                });
+                html += '</table>';
+                
+                html += `<div style="margin-top: 15px; font-size: 0.8em; color: #888;">
+                    <strong>Legend:</strong> 
+                    <span style="color: #00ff88;">● Same (1.0)</span> &nbsp; 
+                    <span style="color: #ff4444;">● Very Similar (>0.7)</span> &nbsp; 
+                    <span style="color: #ffaa00;">● Similar (>0.5)</span> &nbsp; 
+                    <span style="color: #666;">● Different (<0.5)</span>
+                </div>`;
+                
+                container.innerHTML = html;
+            } catch (error) {
+                container.innerHTML = `<div style="color: #ff4444;">❌ Error: ${error.message}</div>`;
             }
         }
         
@@ -4265,7 +5603,7 @@
                     statusDiv.innerHTML = `<strong>Loading ${modelName}...</strong><br>This may take a few minutes for first-time download.`;
                     
                     try {
-                        const res = await fetch('/api/switch-parakeet-model', {
+                        const res = await fetch('/api/switch-model', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ model: modelName })

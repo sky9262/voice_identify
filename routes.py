@@ -8,6 +8,7 @@ import io
 import json
 import uuid
 import threading
+from datetime import datetime
 import numpy as np
 import librosa
 import soundfile as sf
@@ -122,8 +123,8 @@ session_start_time = None
 # Model Management Routes
 # =============================================================================
 
-@api.route('/switch-parakeet-model', methods=['POST'])
-def api_switch_parakeet_model():
+@api.route('/switch-model', methods=['POST'])
+def api_switch_model():
     """Switch to a different ASR model (Parakeet or Voxtral)."""
     data = request.get_json()
     model_name = data.get('model') if data else None
@@ -661,6 +662,101 @@ def speakers_debug():
         'success': True,
         'speakers': debug_info,
         'count': len(speaker_memory)
+    })
+
+
+@api.route('/speakers/export', methods=['GET'])
+def export_speakers():
+    """Export all enrolled speakers as downloadable JSON."""
+    speaker_memory = get_speaker_memory()
+    export_data = {
+        'version': '1.0',
+        'exported_at': datetime.now().isoformat(),
+        'speakers': {}
+    }
+    
+    for name, emb in speaker_memory.items():
+        if hasattr(emb, 'cpu'):
+            emb_np = emb.cpu().numpy()
+        else:
+            emb_np = np.array(emb)
+        export_data['speakers'][name] = {
+            'embedding': emb_np.flatten().tolist(),
+            'hash': embedding_to_hash(emb_np)
+        }
+    
+    return jsonify({
+        'success': True,
+        'data': export_data,
+        'count': len(speaker_memory)
+    })
+
+
+@api.route('/speakers/import', methods=['POST'])
+def import_speakers():
+    """Import speakers from JSON data."""
+    import torch
+    data = request.json
+    if not data or 'speakers' not in data:
+        return jsonify({'success': False, 'error': 'Invalid import data'}), 400
+    
+    imported = 0
+    skipped = 0
+    speaker_memory = get_speaker_memory()
+    
+    for name, info in data['speakers'].items():
+        if name in speaker_memory:
+            skipped += 1
+            continue
+        
+        emb = torch.tensor(info['embedding']).float()
+        speaker_memory[name] = emb
+        imported += 1
+    
+    save_speaker_memory()
+    
+    return jsonify({
+        'success': True,
+        'imported': imported,
+        'skipped': skipped,
+        'total': len(speaker_memory)
+    })
+
+
+@api.route('/speakers/similarity-matrix', methods=['GET'])
+def speaker_similarity_matrix():
+    """Get similarity matrix between all enrolled speakers."""
+    speaker_memory = get_speaker_memory()
+    names = list(speaker_memory.keys())
+    n = len(names)
+    
+    if n == 0:
+        return jsonify({'success': True, 'matrix': [], 'names': []})
+    
+    # Convert all embeddings to numpy
+    embeddings = []
+    for name in names:
+        emb = speaker_memory[name]
+        if hasattr(emb, 'cpu'):
+            emb_np = emb.cpu().numpy().flatten()
+        else:
+            emb_np = np.array(emb).flatten()
+        embeddings.append(emb_np)
+    
+    # Calculate similarity matrix
+    matrix = []
+    for i in range(n):
+        row = []
+        for j in range(n):
+            sim = float(np.dot(embeddings[i], embeddings[j]) / 
+                       (np.linalg.norm(embeddings[i]) * np.linalg.norm(embeddings[j]) + 1e-8))
+            row.append(round(sim, 3))
+        matrix.append(row)
+    
+    return jsonify({
+        'success': True,
+        'names': names,
+        'matrix': matrix
     })
 
 

@@ -8,20 +8,40 @@ Real-time speaker identification and transcription system with voice enrollment 
 
 ## Features
 
-- **Real-time Speaker Identification** - Identify who is speaking using ECAPA-TDNN embeddings
+### Core Features
+- **Real-time Speaker Identification** - Identify who is speaking using WavLM embeddings
 - **Voice Enrollment** - Register speakers by name for automatic recognition
 - **Live Transcription** - Real-time speech-to-text with speaker labels
 - **YouTube Audio Processing** - Download and process YouTube videos for speaker analysis
 - **Live Microphone Mode** - Record and identify speakers in real-time
 - **Sentence-level Segmentation** - Split transcripts at natural sentence boundaries
-- **Speaker Change Detection** - Hybrid detection using Pyannote + ECAPA similarity
+- **Speaker Change Detection** - Hybrid detection using Pyannote + embedding similarity
 - **Retroactive Speaker Labeling** - Update past transcript entries when speakers are enrolled
+
+### Audio Visualization
+- **8 Waveform Styles** - Smooth Wave, Frequency Bars, Circular, Mirror, Oscilloscope, Particles, 3D Terrain, Ribbon
+- **Real-time Controls** - Adjustable smoothing, points, fade trail, line width, amplitude, glow
+- **Persistent Settings** - Save/Reset waveform preferences (per-tab)
+- **Available in both YouTube and Microphone modes**
+
+### Speaker Management
+- **Speaker Timeline** - Visual timeline showing when each speaker talked
+- **Export/Import Speakers** - Backup and restore enrolled speaker profiles
+- **Speaker Similarity Matrix** - View embedding similarity between speakers
+- **Auto-Fix Speakers** - Automatic correction of unidentified speaker labels
+- **Click-to-Merge** - Manually merge hash-labeled speakers with enrolled names
+
+### Transcript Features
+- **Clickable Timestamps** - Click any line to seek audio playback
+- **Transcript Search** - Find specific words/phrases with highlighting
+- **Typing Effect** - Smooth character-by-character text rendering
+- **VibeVoice Post-Processing** - Enhanced transcription with progress indicator
 
 ## Tech Stack
 
 | Component | Technology |
 |-----------|------------|
-| Speaker Embeddings | SpeechBrain ECAPA-TDNN |
+| Speaker Embeddings | Microsoft WavLM (wavlm-base-plus-sv) |
 | ASR (Speech-to-Text) | Parakeet-MLX / Voxtral-MLX |
 | Speaker Segmentation | Pyannote Audio |
 | Backend | Flask (Python) |
@@ -133,7 +153,7 @@ voice_identify/
 | `/api/speakers/<name>` | DELETE | Remove a speaker |
 | `/api/process-streaming` | POST | Process audio chunk |
 | `/api/youtube/download` | POST | Download YouTube audio |
-| `/api/switch-parakeet-model` | POST | Switch ASR model |
+| `/api/switch-model` | POST | Switch ASR model |
 
 ## Configuration
 
